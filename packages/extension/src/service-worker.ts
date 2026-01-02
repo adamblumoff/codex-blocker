@@ -37,9 +37,11 @@ chrome.storage.sync.get(["bypassUntil"], (result) => {
 // Compute derived state
 function getPublicState() {
   const bypassActive = state.bypassUntil !== null && state.bypassUntil > Date.now();
-  // Don't block if waiting for input - only block when truly idle
+  const hasActiveSession = state.sessions > 0;
   const isIdle = state.working === 0 && state.waitingForInput === 0;
-  const shouldBlock = !bypassActive && (isIdle || !state.serverConnected);
+  // Safety default: block when server is offline, or when an active session is idle.
+  const shouldBlock =
+    !bypassActive && (!state.serverConnected || (hasActiveSession && isIdle));
 
   return {
     serverConnected: state.serverConnected,
@@ -73,7 +75,7 @@ function connect() {
     websocket = new WebSocket(WS_URL);
 
     websocket.onopen = () => {
-      console.log("[Claude Blocker] Connected");
+      console.log("[Codex Blocker] Connected");
       state.serverConnected = true;
       retryCount = 0;
       startKeepalive();
@@ -93,7 +95,7 @@ function connect() {
     };
 
     websocket.onclose = () => {
-      console.log("[Claude Blocker] Disconnected");
+      console.log("[Codex Blocker] Disconnected");
       state.serverConnected = false;
       stopKeepalive();
       broadcast();

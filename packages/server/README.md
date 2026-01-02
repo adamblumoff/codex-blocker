@@ -1,54 +1,49 @@
-# claude-blocker
+# codex-blocker
 
-CLI tool and server for [Claude Blocker](https://github.com/t3-content/claude-blocker) — block distracting websites unless Claude Code is actively running inference.
+CLI tool and server for Codex Blocker — block distracting websites unless Codex is actively running.
 
 ## Installation
 
 ```bash
-npm install -g claude-blocker
+npm install -g codex-blocker
 # or
-npx claude-blocker
+npx codex-blocker
 ```
 
 ## Quick Start
 
 ```bash
-# First time setup (configures Claude Code hooks)
-npx claude-blocker --setup
-
-# The server will start automatically after setup
+# Optional setup info
+npx codex-blocker --setup
 ```
 
 ## Usage
 
 ```bash
 # Start server (default port 8765)
-npx claude-blocker
+npx codex-blocker
 
-# Start with setup (configures hooks if not already done)
-npx claude-blocker --setup
+# Show setup info
+npx codex-blocker --setup
 
 # Custom port
-npx claude-blocker --port 9000
+npx codex-blocker --port 9000
 
-# Remove hooks from Claude Code
-npx claude-blocker --remove
+# Remove setup (no-op)
+npx codex-blocker --remove
 
 # Show help
-npx claude-blocker --help
+npx codex-blocker --help
 ```
 
 ## How It Works
 
-1. **Hooks** — The `--setup` command adds hooks to `~/.claude/settings.json` that notify the server when:
-   - You submit a prompt (`UserPromptSubmit`)
-   - Claude uses a tool (`PreToolUse`)
-   - Claude finishes (`Stop`)
-   - A session starts/ends (`SessionStart`, `SessionEnd`)
+1. **Codex sessions** — The server tails Codex session logs under `~/.codex/sessions`
+   to detect activity.
 
 2. **Server** — Runs on localhost and:
-   - Tracks all active Claude Code sessions
-   - Knows when sessions are "working" vs "idle"
+   - Tracks active Codex sessions
+   - Marks sessions "working" when new log lines arrive
    - Broadcasts state via WebSocket to the Chrome extension
 
 3. **Extension** — Connects to the server and:
@@ -63,7 +58,6 @@ npx claude-blocker --help
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/status` | GET | Returns current state (sessions, blocked status) |
-| `/hook` | POST | Receives hook payloads from Claude Code |
 
 ### WebSocket
 
@@ -81,7 +75,7 @@ Connect to `ws://localhost:8765/ws` to receive real-time state updates:
 ## Programmatic Usage
 
 ```typescript
-import { startServer } from 'claude-blocker';
+import { startServer } from 'codex-blocker';
 
 // Start on default port (8765)
 startServer();
@@ -93,7 +87,7 @@ startServer(9000);
 ## Requirements
 
 - Node.js 18+
-- [Claude Code](https://claude.ai/claude-code)
+- Codex CLI
 
 ## License
 

@@ -1,7 +1,7 @@
 {
-  "name": "claude-blocker",
+  "name": "codex-blocker",
   "version": "0.0.2",
-  "description": "Block distracting websites unless Claude Code is actively running inference",
+  "description": "Block distracting websites unless Codex is actively running inference",
   "author": "Theo Browne",
   "repository": {
     "type": "git",
@@ -13,7 +13,7 @@
   },
   "type": "module",
   "bin": {
-    "claude-blocker": "./dist/bin.js"
+    "codex-blocker": "./dist/bin.js"
   },
   "main": "./dist/server.js",
   "types": "./dist/server.d.ts",
@@ -26,6 +26,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@claude-blocker/shared": "workspace:*",
     "ws": "^8.18.0"
   },
   "devDependencies": {
@@ -36,8 +37,8 @@
     "typescript": "^5.7.2"
   },
   "keywords": [
-    "claude",
-    "claude-code",
+    "codex",
+    "codex-cli",
     "productivity",
     "blocker",
     "focus",

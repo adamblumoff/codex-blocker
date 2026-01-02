@@ -1,5 +1,5 @@
-import type { Session, HookPayload, ServerMessage } from "./types.js";
-import { SESSION_TIMEOUT_MS, USER_INPUT_TOOLS } from "./types.js";
+import type { Session, CodexActivity, ServerMessage } from "./types.js";
+import { SESSION_TIMEOUT_MS } from "./types.js";
 
 type StateChangeCallback = (message: ServerMessage) => void;
 
@@ -44,97 +44,85 @@ class SessionState {
     };
   }
 
-  handleHook(payload: HookPayload): void {
-    const { session_id, hook_event_name } = payload;
-
-    switch (hook_event_name) {
-      case "SessionStart":
-        this.sessions.set(session_id, {
-          id: session_id,
-          status: "idle",
-          lastActivity: new Date(),
-          cwd: payload.cwd,
-        });
-        console.log("Claude Code session connected");
-        break;
-
-      case "SessionEnd":
-        this.sessions.delete(session_id);
-        console.log("Claude Code session disconnected");
-        break;
-
-      case "UserPromptSubmit":
-        this.ensureSession(session_id, payload.cwd);
-        const promptSession = this.sessions.get(session_id)!;
-        promptSession.status = "working";
-        promptSession.waitingForInputSince = undefined;
-        promptSession.lastActivity = new Date();
-        break;
-
-      case "PreToolUse":
-        this.ensureSession(session_id, payload.cwd);
-        const toolSession = this.sessions.get(session_id)!;
-        // Check if this is a user input tool
-        if (payload.tool_name && USER_INPUT_TOOLS.includes(payload.tool_name)) {
-          toolSession.status = "waiting_for_input";
-          toolSession.waitingForInputSince = new Date();
-        } else if (toolSession.status === "waiting_for_input") {
-          // If waiting for input, only reset after 500ms (to ignore immediate tool calls like Edit)
-          const elapsed = Date.now() - (toolSession.waitingForInputSince?.getTime() ?? 0);
-          if (elapsed > 500) {
-            toolSession.status = "working";
-            toolSession.waitingForInputSince = undefined;
-          }
-        } else {
-          toolSession.status = "working";
-        }
-        toolSession.lastActivity = new Date();
-        break;
-
-      case "Stop":
-        this.ensureSession(session_id, payload.cwd);
-        const idleSession = this.sessions.get(session_id)!;
-        if (idleSession.status === "waiting_for_input") {
-          // If waiting for input, only reset after 500ms (to ignore immediate Stop after AskUserQuestion)
-          const elapsed = Date.now() - (idleSession.waitingForInputSince?.getTime() ?? 0);
-          if (elapsed > 500) {
-            idleSession.status = "idle";
-            idleSession.waitingForInputSince = undefined;
-          }
-        } else {
-          idleSession.status = "idle";
-        }
-        idleSession.lastActivity = new Date();
-        break;
-    }
-
+  handleCodexActivity(activity: CodexActivity): void {
+    this.ensureSession(activity.sessionId, activity.cwd);
+    const session = this.sessions.get(activity.sessionId)!;
+    session.status = "working";
+    session.waitingForInputSince = undefined;
+    session.lastActivity = new Date();
+    session.lastSeen = new Date();
+    session.idleTimeoutMs = activity.idleTimeoutMs;
     this.broadcast();
   }
 
-  private ensureSession(sessionId: string, cwd?: string): void {
+  setCodexIdle(sessionId: string, cwd?: string): void {
+    this.ensureSession(sessionId, cwd);
+    const session = this.sessions.get(sessionId)!;
+    if (session.status !== "idle") {
+      session.status = "idle";
+      session.waitingForInputSince = undefined;
+      session.lastActivity = new Date();
+      this.broadcast();
+    }
+  }
+
+  markCodexSessionSeen(sessionId: string, cwd?: string): void {
+    const created = this.ensureSession(sessionId, cwd);
+    const session = this.sessions.get(sessionId)!;
+    session.lastSeen = new Date();
+    if (created) {
+      this.broadcast();
+    }
+  }
+
+  removeSession(sessionId: string): void {
+    if (this.sessions.delete(sessionId)) {
+      this.broadcast();
+    }
+  }
+
+  private ensureSession(sessionId: string, cwd?: string): boolean {
     if (!this.sessions.has(sessionId)) {
       this.sessions.set(sessionId, {
         id: sessionId,
         status: "idle",
         lastActivity: new Date(),
+        lastSeen: new Date(),
         cwd,
       });
-      console.log("Claude Code session connected");
+      console.log("Codex session connected");
+      return true;
+    } else if (cwd) {
+      const session = this.sessions.get(sessionId)!;
+      session.cwd = cwd;
     }
+    return false;
   }
 
   private cleanupStaleSessions(): void {
     const now = Date.now();
     let removed = 0;
+    let changed = 0;
 
     for (const [id, session] of this.sessions) {
-      if (now - session.lastActivity.getTime() > SESSION_TIMEOUT_MS) {
+      if (now - session.lastSeen.getTime() > SESSION_TIMEOUT_MS) {
         this.sessions.delete(id);
         removed++;
+        continue;
+      }
+
+      if (
+        session.status === "working" &&
+        session.idleTimeoutMs &&
+        now - session.lastActivity.getTime() > session.idleTimeoutMs
+      ) {
+        session.status = "idle";
+        session.waitingForInputSince = undefined;
+        changed++;
       }
     }
 
-    if (removed > 0) {
+    if (removed > 0 || changed > 0) {
       this.broadcast();
     }
   }

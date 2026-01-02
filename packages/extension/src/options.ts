@@ -156,7 +156,7 @@ function updateUI(state: ExtensionState): void {
     statusText.textContent = "Offline";
   } else if (state.working > 0) {
     statusIndicator.className = "status-indicator working";
-    statusText.textContent = "Claude Working";
+    statusText.textContent = "Codex Working";
   } else {
     statusIndicator.className = "status-indicator connected";
     statusText.textContent = "Connected";

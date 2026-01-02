@@ -1,17 +1,9 @@
-import { createServer, type IncomingMessage, type ServerResponse } from "http";
+import { createServer, type ServerResponse } from "http";
 import { WebSocketServer, WebSocket } from "ws";
-import type { HookPayload, ClientMessage } from "./types.js";
+import type { ClientMessage } from "./types.js";
 import { DEFAULT_PORT } from "./types.js";
 import { state } from "./state.js";
-
-function parseBody(req: IncomingMessage): Promise<string> {
-  return new Promise((resolve, reject) => {
-    let body = "";
-    req.on("data", (chunk) => (body += chunk));
-    req.on("end", () => resolve(body));
-    req.on("error", reject);
-  });
-}
+import { CodexSessionWatcher } from "./codex.js";
 
 function sendJson(res: ServerResponse, data: unknown, status = 200): void {
   res.writeHead(status, { "Content-Type": "application/json" });
@@ -36,25 +28,6 @@ export function startServer(port: number = DEFAULT_PORT): void {
     // Health check / status endpoint
     if (req.method === "GET" && url.pathname === "/status") {
       sendJson(res, state.getStatus());
-      return;
-    }
-
-    // Hook endpoint - receives notifications from Claude Code
-    if (req.method === "POST" && url.pathname === "/hook") {
-      try {
-        const body = await parseBody(req);
-        const payload = JSON.parse(body) as HookPayload;
-
-        if (!payload.session_id || !payload.hook_event_name) {
-          sendJson(res, { error: "Invalid payload" }, 400);
-          return;
-        }
-
-        state.handleHook(payload);
-        sendJson(res, { ok: true });
-      } catch {
-        sendJson(res, { error: "Invalid JSON" }, 400);
-      }
       return;
     }
 
@@ -97,16 +70,19 @@ export function startServer(port: number = DEFAULT_PORT): void {
     });
   });
 
+  const codexWatcher = new CodexSessionWatcher();
+  codexWatcher.start();
+
   server.listen(port, () => {
     console.log(`
 ┌─────────────────────────────────────┐
 │                                     │
-│   Claude Blocker Server             │
+│   Codex Blocker Server              │
 │                                     │
 │   HTTP:      http://localhost:${port}  │
 │   WebSocket: ws://localhost:${port}/ws │
 │                                     │
-│   Waiting for Claude Code hooks...  │
+│   Watching Codex sessions...        │
 │                                     │
 └─────────────────────────────────────┘
 `);
@@ -116,6 +92,7 @@ export function startServer(port: number = DEFAULT_PORT): void {
   process.once("SIGINT", () => {
     console.log("\nShutting down...");
     state.destroy();
+    codexWatcher.stop();
     wss.close();
     server.close();
     process.exit(0);

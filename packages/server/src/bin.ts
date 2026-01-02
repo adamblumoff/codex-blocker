@@ -2,7 +2,7 @@
 
 import { createInterface } from "readline";
 import { startServer } from "./server.js";
-import { setupHooks, removeHooks, areHooksConfigured } from "./setup.js";
+import { setupCodex, removeCodexSetup, isCodexAvailable } from "./setup.js";
 import { DEFAULT_PORT } from "@claude-blocker/shared";
 
 const args = process.argv.slice(2);
@@ -23,20 +23,20 @@ function prompt(question: string): Promise<string> {
 
 function printHelp(): void {
   console.log(`
-Claude Blocker - Block distracting sites when Claude Code isn't working
+Codex Blocker - Block distracting sites when Codex isn't working
 
 Usage:
-  npx claude-blocker [options]
+  npx codex-blocker [options]
 
 Options:
-  --setup     Configure Claude Code hooks
-  --remove    Remove Claude Code hooks
+  --setup     Show Codex setup info
+  --remove    Remove Codex setup (no-op)
   --port      Server port (default: ${DEFAULT_PORT})
   --help      Show this help message
 
 Examples:
-  npx claude-blocker            # Start the server (prompts for setup on first run)
-  npx claude-blocker --port 9000
+  npx codex-blocker            # Start the server
+  npx codex-blocker --port 9000
 `);
 }
 
@@ -47,12 +47,12 @@ async function main(): Promise<void> {
   }
 
   if (args.includes("--setup")) {
-    setupHooks();
+    setupCodex();
     process.exit(0);
   }
 
   if (args.includes("--remove")) {
-    removeHooks();
+    removeCodexSetup();
     process.exit(0);
   }
 
@@ -69,17 +69,11 @@ async function main(): Promise<void> {
     }
   }
 
-  // Check if hooks are configured, prompt for setup if not
-  if (!areHooksConfigured()) {
-    console.log("Claude Blocker hooks are not configured yet.\n");
-    const answer = await prompt("Would you like to set them up now? (Y/n) ");
-    const normalized = answer.trim().toLowerCase();
-
-    if (normalized === "" || normalized === "y" || normalized === "yes") {
-      setupHooks();
-      console.log(""); // Add spacing before server start
-    } else {
-      console.log("\nSkipping setup. You can run 'npx claude-blocker --setup' later.\n");
+  if (!isCodexAvailable()) {
+    console.log("Codex sessions directory not found yet.");
+    const answer = await prompt("Run Codex once to create it, then press enter to continue. ");
+    if (answer !== undefined) {
+      console.log("");
     }
   }
 

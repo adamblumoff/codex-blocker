@@ -1,25 +1,25 @@
-# Claude Blocker
+# Codex Blocker
 
-Block distracting websites unless [Claude Code](https://claude.ai/claude-code) is actively running inference.
+Block distracting websites unless Codex is actively running inference.
 
-**The premise is simple:** if Claude is working, you should be too. When Claude stops, your distractions come back.
+**The premise is simple:** if Codex is working, you should be too. When Codex stops, your distractions come back.
 
 ## How It Works
 
 ```
-┌─────────────────┐     hooks      ┌─────────────────┐    websocket    ┌─────────────────┐
-│   Claude Code   │ ─────────────► │  Blocker Server │ ◄─────────────► │ Chrome Extension│
+┌─────────────────┐  session logs  ┌─────────────────┐    websocket    ┌─────────────────┐
+│     Codex       │ ─────────────► │  Blocker Server │ ◄─────────────► │ Chrome Extension│
 │   (terminal)    │                │  (localhost)    │                 │   (browser)     │
 └─────────────────┘                └─────────────────┘                 └─────────────────┘
        │                                   │                                   │
-       │ UserPromptSubmit                  │ tracks sessions                   │ blocks sites
-       │ PreToolUse                        │ broadcasts state                  │ shows modal
-       │ Stop                              │                                   │ bypass button
+       │ log writes                         │ tracks sessions                   │ blocks sites
+       │                                   │ broadcasts state                  │ shows modal
+       │                                   │                                   │ bypass button
        └───────────────────────────────────┴───────────────────────────────────┘
 ```
 
-1. **Claude Code hooks** notify the server when you submit a prompt or when Claude finishes
-2. **Blocker server** tracks all Claude Code sessions and their working/idle states
+1. **Codex session logs** are tailed by the server to detect activity
+2. **Blocker server** tracks all Codex sessions and their working/idle states
 3. **Chrome extension** blocks configured sites when no session is actively working
 
 ## Quick Start
@@ -27,10 +27,10 @@ Block distracting websites unless [Claude Code](https://claude.ai/claude-code) i
 ### 1. Install the server
 
 ```bash
-npx claude-blocker --setup
+npx codex-blocker
 ```
 
-This installs the Claude Code hooks and starts the server. The hooks are configured in `~/.claude/settings.json`.
+This starts the server. No hooks are required; the server reads Codex session logs from `~/.codex/sessions`.
 
 ### 2. Install the Chrome extension
 
@@ -39,31 +39,28 @@ This installs the Claude Code hooks and starts the server. The hooks are configu
 
 ### 3. Configure blocked sites
 
-Click the extension icon → Settings to add sites you want blocked when Claude is idle.
+Click the extension icon → Settings to add sites you want blocked when Codex is idle.
 
 Default blocked sites: `x.com`, `youtube.com`
 
 ## Server CLI
 
 ```bash
-# Start with auto-setup (recommended for first run)
-npx claude-blocker --setup
-
 # Start on custom port
-npx claude-blocker --port 9000
+npx codex-blocker --port 9000
 
-# Remove hooks from Claude Code settings
-npx claude-blocker --remove
+# Show setup info
+npx codex-blocker --setup
 
 # Show help
-npx claude-blocker --help
+npx codex-blocker --help
 ```
 
 ## Features
 
 - **Soft blocking** — Sites show a modal overlay, not a hard block
 - **Real-time updates** — No page refresh needed when state changes
-- **Multi-session support** — Tracks multiple Claude Code instances
+- **Multi-session support** — Tracks multiple Codex instances
 - **Emergency bypass** — 5-minute bypass, once per day
 - **Configurable sites** — Add/remove sites from extension settings
 - **Works offline** — Blocks everything when server isn't running (safety default)
@@ -72,7 +69,7 @@ npx claude-blocker --help
 
 - Node.js 18+
 - Chrome (or Chromium-based browser)
-- [Claude Code](https://claude.ai/claude-code)
+- Codex CLI
 
 ## Development
 
