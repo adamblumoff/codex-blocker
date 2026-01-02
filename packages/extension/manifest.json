@@ -3,7 +3,7 @@
   "name": "Codex Blocker",
   "version": "0.0.2",
   "description": "Block distracting websites unless Codex is actively running inference",
-  "homepage_url": "https://github.com/t3-content/claude-blocker",
+  "homepage_url": "https://github.com/adamblumoff/codex-blocker",
   "minimum_chrome_version": "116",
   "icons": {
     "16": "icon-16.png",

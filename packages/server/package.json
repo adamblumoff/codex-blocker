@@ -1,15 +1,15 @@
 {
   "name": "codex-blocker",
-  "version": "0.0.2",
-  "description": "Block distracting websites unless Codex is actively running inference",
-  "author": "Theo Browne",
+  "version": "0.0.3",
+  "description": "Block distracting websites unless Codex is actively running inference. Forked from Theo Browne's (T3)Claude Blocker",
+  "author": "Adam Blumoff ",
   "repository": {
     "type": "git",
-    "url": "https://github.com/t3-content/claude-blocker.git"
+    "url": "https://github.com/adamblumoff/codex-blocker.git"
   },
-  "homepage": "https://github.com/t3-content/claude-blocker",
+  "homepage": "https://github.com/adamblumoff/codex-blocker",
   "bugs": {
-    "url": "https://github.com/t3-content/claude-blocker/issues"
+    "url": "https://github.com/adamblumoff/codex-blocker/issues"
   },
   "type": "module",
   "bin": {
