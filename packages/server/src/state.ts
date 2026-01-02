@@ -127,12 +127,22 @@ class SessionState {
     }
   }
 
-  getStatus(): { blocked: boolean; sessions: Session[] } {
+  getStatus(): {
+    blocked: boolean;
+    sessions: number;
+    working: number;
+    waitingForInput: number;
+  } {
     const sessions = Array.from(this.sessions.values());
     const working = sessions.filter((s) => s.status === "working").length;
+    const waitingForInput = sessions.filter(
+      (s) => s.status === "waiting_for_input"
+    ).length;
     return {
       blocked: working === 0,
-      sessions,
+      sessions: sessions.length,
+      working,
+      waitingForInput,
     };
   }
 
