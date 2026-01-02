@@ -3,7 +3,7 @@
 import { createInterface } from "readline";
 import { startServer } from "./server.js";
 import { setupCodex, removeCodexSetup, isCodexAvailable } from "./setup.js";
-import { DEFAULT_PORT } from "@claude-blocker/shared";
+import { DEFAULT_PORT } from "./types.js";
 
 const args = process.argv.slice(2);
 
