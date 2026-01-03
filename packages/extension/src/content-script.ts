@@ -1,7 +1,7 @@
 export {};
 
-const MODAL_ID = "claude-blocker-modal";
-const TOAST_ID = "claude-blocker-toast";
+const MODAL_ID = "codex-blocker-modal";
+const TOAST_ID = "codex-blocker-toast";
 const DEFAULT_DOMAINS = ["x.com", "youtube.com"];
 
 // State shape from service worker

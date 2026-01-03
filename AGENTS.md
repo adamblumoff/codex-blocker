@@ -34,5 +34,5 @@
 
 ## Security & Configuration Tips
 - The server runs locally; avoid adding external network calls without justification.
-- Claude Code hooks are configured in `~/.claude/settings.json`.
+- Codex sessions are stored under `~/.codex/sessions`.
 - Extension settings are stored via Chrome sync if enabled.

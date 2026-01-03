@@ -4,6 +4,8 @@ Block distracting websites unless Codex is actively running inference.
 
 **The premise is simple:** if Codex is working, you should be too. When Codex stops, your distractions come back.
 
+**Acknowledgment:** Codex Blocker is a fork of Claude Blocker by Theo Browne (t3dotgg). This project builds on his original idea and implementation.
+
 ## How It Works
 
 ```
@@ -75,8 +77,8 @@ npx codex-blocker --help
 
 ```bash
 # Clone and install
-git clone https://github.com/t3-content/claude-blocker.git
-cd claude-blocker
+git clone https://github.com/adamblumoff/codex-blocker.git
+cd codex-blocker
 pnpm install
 
 # Build everything

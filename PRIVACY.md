@@ -1,81 +1,67 @@
 # Privacy Policy for Codex Blocker
 
-**Last updated:** January 2, 2026
+**Last updated:** January 3, 2026
 
-## Overview
+## Summary
 
-Codex Blocker is a productivity tool that blocks distracting websites when Codex is not actively working. This privacy policy explains what data is collected and how it's used.
+Codex Blocker is a local‑only productivity tool. The extension and server run on your machine and do not send your data to external services.
 
-## Data Collection
+## Data We Store (Local Only)
 
-### What We Collect
+Codex Blocker stores a small amount of data on your device to function:
 
-Codex Blocker collects and stores the following data **locally on your device**:
+- **Blocked sites list** — The domains you choose to block (defaults include `x.com` and `youtube.com`).
+- **Bypass status** — Whether a daily 5‑minute bypass is active and when it expires.
+- **Bypass date** — The last day you used the bypass (to enforce once‑per‑day).
 
-1. **Blocked Domains List** — The websites you configure to be blocked (default: x.com, youtube.com)
-2. **Bypass State** — Whether you've used your daily emergency bypass, and when it expires
-3. **Last Bypass Date** — The date of your last bypass usage (to enforce once-per-day limit)
-
-### What We Don't Collect
+## Data We Do Not Collect
 
 - No browsing history
 - No personal information
-- No analytics or telemetry
-- No usage statistics
-- No data sent to external servers
+- No analytics, telemetry, or usage tracking
+- No data sent to third‑party servers
 
-## Data Storage
+## Where Data Lives
 
-All data is stored using Chrome's `chrome.storage.sync` API:
+Extension data is stored using Chrome’s extension storage:
 
-- **Local storage** — Data is stored on your device
-- **Chrome sync** — If you have Chrome sync enabled, your blocked domains list will sync across your devices via your Google account
-- **No external servers** — We do not operate any servers that receive your data
+- **Local device storage** for all settings
+- **Optional Chrome sync** if you have sync enabled
 
-## Server Communication
+## Local Server Behavior
 
-The extension communicates only with a **local server running on your machine** (`localhost:8765`). This server:
+The extension talks only to a **local server** on your computer (`http://localhost:8765`):
 
-- Runs entirely on your computer
-- Never connects to the internet
-- Reads Codex session logs stored locally on your machine
+- The server does not accept internet traffic
+- It does not transmit data externally
+- It reads Codex session logs stored locally to detect activity
 
-## Third-Party Services
+## Permissions
 
-Codex Blocker does not use any third-party services, analytics, or tracking.
+| Permission | Purpose |
+|---|---|
+| `storage` | Save blocked sites and bypass state |
+| `tabs` | Notify open tabs when blocking status changes |
+| `<all_urls>` | Show the blocking overlay on any site you choose to block |
 
-## Data Deletion
+## Deleting Data
 
-To delete all Codex Blocker data:
+To remove all Codex Blocker data:
 
-1. Open Chrome extension settings
-2. Click on Codex Blocker → "Remove"
-3. All locally stored data will be deleted
+1. Open Chrome’s Extensions page
+2. Remove Codex Blocker
+3. (Optional) Clear extension storage via Chrome DevTools
 
-Alternatively, clear the extension's storage via Chrome DevTools.
+## Updates
 
-## Permissions Explained
-
-| Permission | Why We Need It |
-|------------|----------------|
-| `storage` | Store your blocked domains list and bypass state |
-| `tabs` | Send state updates to open tabs when blocking status changes |
-| `<all_urls>` | Inject the blocking modal on any website you configure |
-
-## Children's Privacy
-
-Codex Blocker is not directed at children under 13 and does not knowingly collect data from children.
-
-## Changes to This Policy
-
-We may update this privacy policy from time to time. Changes will be posted to this page with an updated revision date.
+We may update this policy as the product changes. The “Last updated” date will reflect changes.
 
 ## Contact
 
-For questions about this privacy policy, please open an issue at:
-https://github.com/t3-content/claude-blocker/issues
+Questions? Please open an issue:
+https://github.com/adamblumoff/codex-blocker/issues
 
 ## Open Source
 
-Codex Blocker is open source software. You can review the complete source code at:
-https://github.com/t3-content/claude-blocker
+Codex Blocker is open source. Source code is available at:
+https://github.com/adamblumoff/codex-blocker
