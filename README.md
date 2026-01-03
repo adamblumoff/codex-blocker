@@ -29,7 +29,15 @@ Block distracting websites unless Codex is actively running inference.
 ### 1. Install the server
 
 ```bash
+# One-off (recommended)
 npx codex-blocker
+
+# Or install globally
+npm install -g codex-blocker
+# pnpm add -g codex-blocker
+
+# Then run
+codex-blocker
 ```
 
 This starts the server. No hooks are required; the server reads Codex session logs from `~/.codex/sessions`.
