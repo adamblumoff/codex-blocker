@@ -12,5 +12,8 @@
   "devDependencies": {
     "typescript": "^5.7.2"
   },
-  "version": ""
+  "version": "",
+  "dependencies": {
+    "codex-blocker": "^0.0.4"
+  }
 }

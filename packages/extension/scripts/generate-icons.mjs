@@ -7,7 +7,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const svgPath = join(__dirname, '..', 'icon.svg');
 const distPath = join(__dirname, '..', 'dist');
 
-const sizes = [16, 32, 48, 128];
+const sizes = [16, 32, 48, 128, 256, 512];
 
 const baseSvg = readFileSync(svgPath, 'utf8');
 

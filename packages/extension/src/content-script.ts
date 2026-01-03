@@ -3,6 +3,7 @@ export {};
 const MODAL_ID = "codex-blocker-modal";
 const TOAST_ID = "codex-blocker-toast";
 const DEFAULT_DOMAINS = ["x.com", "youtube.com"];
+const iconUrl = chrome.runtime.getURL("icon-mark.svg");
 
 // State shape from service worker
 interface PublicState {
@@ -57,10 +58,7 @@ function createModal(): void {
   shadow.innerHTML = `
     <div style="all:initial;position:fixed;top:0;left:0;right:0;bottom:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5;z-index:2147483647;-webkit-font-smoothing:antialiased;">
       <div style="all:initial;background:#1a1a1a;border:1px solid #333;border-radius:16px;padding:40px;max-width:480px;text-align:center;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased;">
-        <svg style="width:64px;height:64px;margin-bottom:24px;" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <rect x="3" y="11" width="18" height="11" rx="2" fill="#FFD700" stroke="#B8860B" stroke-width="1"/>
-          <path d="M7 11V7a5 5 0 0 1 10 0v4" stroke="#888" stroke-width="2" fill="none"/>
-        </svg>
+        <img src="${iconUrl}" alt="" style="width:72px;height:72px;margin-bottom:24px;display:inline-block;filter:drop-shadow(0 4px 12px rgba(255, 215, 0, 0.25));"/>
         <div style="color:#fff;font-size:24px;font-weight:bold;margin:0 0 16px;line-height:1.2;">Time to Work</div>
         <div id="message" style="color:#888;font-size:16px;line-height:1.5;margin:0 0 24px;font-weight:normal;">Loading...</div>
         <div style="display:inline-flex;align-items:center;gap:8px;padding:8px 16px;background:#2a2a2a;border-radius:20px;font-size:14px;color:#666;line-height:1;">
