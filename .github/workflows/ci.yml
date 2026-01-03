@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: pnpm
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Build
+        run: pnpm build
+
+      - name: Zip extension
+        run: pnpm --filter @codex-blocker/extension zip
+
+      - name: Upload extension zip
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-blocker-extension-zip
+          path: packages/extension/codex-blocker.zip
+          if-no-files-found: error
+
+      - name: Upload extension dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-blocker-extension-dist
+          path: packages/extension/dist/**
+          if-no-files-found: error
+
+      - name: Upload server dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-blocker-server-dist
+          path: packages/server/dist/**
+          if-no-files-found: ignore
