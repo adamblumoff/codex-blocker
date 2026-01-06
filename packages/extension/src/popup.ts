@@ -6,8 +6,8 @@ interface PopupState {
   sessions: number;
   working: number;
   bypassActive: boolean;
-  enabled: boolean;
   forceBlock: boolean;
+  forceOpen: boolean;
 }
 
 const statusDot = document.getElementById("status-dot") as HTMLElement;
@@ -37,13 +37,13 @@ function updateUI(state: PopupState): void {
   sessionsEl.textContent = String(state.sessions);
   workingEl.textContent = String(state.working);
 
-  extensionToggle.checked = state.enabled;
+  extensionToggle.checked = state.forceOpen;
   extensionToggle.disabled = false;
   forceBlockToggle.checked = state.forceBlock;
   forceBlockToggle.disabled = false;
 
   // Block badge
-  if (state.forceBlock) {
+  if (state.forceBlock && !state.forceOpen) {
     blockBadge.className = "block-badge blocked";
     blockStatus.textContent = "Always";
   } else if (state.bypassActive) {
@@ -71,11 +71,11 @@ settingsBtn.addEventListener("click", () => {
 });
 
 extensionToggle.addEventListener("change", () => {
-  const enabled = extensionToggle.checked;
+  const forceOpen = extensionToggle.checked;
   extensionToggle.disabled = true;
-  chrome.runtime.sendMessage({ type: "SET_ENABLED", enabled }, (response) => {
+  chrome.runtime.sendMessage({ type: "SET_FORCE_OPEN", forceOpen }, (response) => {
     if (chrome.runtime.lastError || !response?.success) {
-      extensionToggle.checked = !enabled;
+      extensionToggle.checked = !forceOpen;
     }
     extensionToggle.disabled = false;
   });

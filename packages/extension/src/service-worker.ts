@@ -11,6 +11,7 @@ interface State {
   enabled: boolean;
   pauseMedia: boolean;
   forceBlock: boolean;
+  forceOpen: boolean;
   serverConnected: boolean;
   sessions: number;
   working: number;
@@ -22,6 +23,7 @@ const state: State = {
   enabled: true,
   pauseMedia: true,
   forceBlock: false,
+  forceOpen: false,
   serverConnected: false,
   sessions: 0,
   working: 0,
@@ -37,18 +39,22 @@ let authToken: string | null = null;
 const statePorts = new Set<chrome.runtime.Port>();
 
 // Load bypass from storage on startup
-chrome.storage.sync.get(["bypassUntil", "enabled", "pauseMedia", "forceBlock"], (result) => {
+chrome.storage.sync.get(
+  ["bypassUntil", "enabled", "pauseMedia", "forceBlock", "forceOpen"],
+  (result) => {
   if (result.bypassUntil && result.bypassUntil > Date.now()) {
     state.bypassUntil = result.bypassUntil;
-  }
-  if (typeof result.enabled === "boolean") {
-    state.enabled = result.enabled;
   }
   if (typeof result.pauseMedia === "boolean") {
     state.pauseMedia = result.pauseMedia;
   }
   if (typeof result.forceBlock === "boolean") {
     state.forceBlock = result.forceBlock;
+  }
+  if (typeof result.forceOpen === "boolean") {
+    state.forceOpen = result.forceOpen;
+  } else if (typeof result.enabled === "boolean") {
+    state.forceOpen = !result.enabled;
   }
   broadcast();
 });
@@ -84,16 +90,24 @@ function getPublicState() {
   // Safety default: block when server is offline, or when an active session is idle.
   const shouldBlock =
     !bypassActive && (!state.serverConnected || (hasActiveSession && isIdle));
+  const cancelOverride = state.forceBlock && state.forceOpen;
+  const effectiveBlocked = cancelOverride
+    ? shouldBlock
+    : state.forceOpen
+      ? false
+      : state.forceBlock
+        ? true
+        : shouldBlock;
 
   return {
-    enabled: state.enabled,
+    forceOpen: state.forceOpen,
     pauseMedia: state.pauseMedia,
     forceBlock: state.forceBlock,
     serverConnected: state.serverConnected,
     sessions: state.sessions,
     working: state.working,
     waitingForInput: state.waitingForInput,
-    blocked: state.enabled ? (state.forceBlock ? true : shouldBlock) : false,
+    blocked: effectiveBlocked,
     bypassActive,
     bypassUntil: state.bypassUntil,
   };
@@ -199,7 +213,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message.type === "SET_ENABLED") {
     state.enabled = Boolean(message.enabled);
-    chrome.storage.sync.set({ enabled: state.enabled }, () => {
+    state.forceOpen = !state.enabled;
+    chrome.storage.sync.set({ forceOpen: state.forceOpen }, () => {
       broadcast();
       sendResponse({ success: true });
     });
@@ -218,6 +233,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === "SET_FORCE_BLOCK") {
     state.forceBlock = Boolean(message.forceBlock);
     chrome.storage.sync.set({ forceBlock: state.forceBlock }, () => {
+      broadcast();
+      sendResponse({ success: true });
+    });
+    return true;
+  }
+
+  if (message.type === "SET_FORCE_OPEN") {
+    state.forceOpen = Boolean(message.forceOpen);
+    chrome.storage.sync.set({ forceOpen: state.forceOpen }, () => {
       broadcast();
       sendResponse({ success: true });
     });

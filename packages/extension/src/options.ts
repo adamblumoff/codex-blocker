@@ -8,9 +8,9 @@ interface ExtensionState {
   sessions: number;
   working: number;
   bypassActive: boolean;
-  enabled: boolean;
   pauseMedia: boolean;
   forceBlock: boolean;
+  forceOpen: boolean;
 }
 
 interface BypassStatus {
@@ -173,17 +173,17 @@ function updateUI(state: ExtensionState): void {
   workingEl.textContent = String(state.working);
 
   // Block status
-  enabledToggle.checked = state.enabled;
+  enabledToggle.checked = state.forceOpen;
   enabledToggle.disabled = false;
   pauseMediaToggle.checked = state.pauseMedia;
   pauseMediaToggle.disabled = false;
   forceBlockToggle.checked = state.forceBlock;
   forceBlockToggle.disabled = false;
 
-  if (!state.enabled) {
-    blockStatusEl.textContent = "Muted";
+  if (state.forceOpen && !state.forceBlock) {
+    blockStatusEl.textContent = "Always Open";
     blockStatusEl.style.color = "var(--text-muted)";
-  } else if (state.forceBlock) {
+  } else if (state.forceBlock && !state.forceOpen) {
     blockStatusEl.textContent = "Always";
     blockStatusEl.style.color = "var(--accent-red)";
   } else if (state.bypassActive) {
@@ -259,11 +259,11 @@ addForm.addEventListener("submit", (e) => {
 });
 
 enabledToggle.addEventListener("change", () => {
-  const enabled = enabledToggle.checked;
+  const forceOpen = enabledToggle.checked;
   enabledToggle.disabled = true;
-  chrome.runtime.sendMessage({ type: "SET_ENABLED", enabled }, (response) => {
+  chrome.runtime.sendMessage({ type: "SET_FORCE_OPEN", forceOpen }, (response) => {
     if (chrome.runtime.lastError || !response?.success) {
-      enabledToggle.checked = !enabled;
+      enabledToggle.checked = !forceOpen;
     }
     enabledToggle.disabled = false;
   });

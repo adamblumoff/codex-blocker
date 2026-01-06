@@ -7,9 +7,9 @@ const iconUrl = chrome.runtime.getURL("icon-mark.svg");
 
 // State shape from service worker
 interface PublicState {
-  enabled: boolean;
   pauseMedia: boolean;
   forceBlock: boolean;
+  forceOpen: boolean;
   serverConnected: boolean;
   sessions: number;
   working: number;
@@ -314,7 +314,7 @@ function renderError(): void {
 function handleState(state: PublicState): void {
   lastKnownState = state;
 
-  if (!state.enabled) {
+  if (state.forceOpen && !state.forceBlock) {
     shouldBeBlocked = false;
     removeModal();
     removeToast();
@@ -334,8 +334,14 @@ function handleState(state: PublicState): void {
     return;
   }
 
-  const pauseMediaActive = state.pauseMedia && state.enabled;
-  const isBlocked = state.forceBlock ? true : state.blocked;
+  const isBlocked = state.forceOpen && state.forceBlock
+    ? state.blocked
+    : state.forceOpen
+      ? false
+      : state.forceBlock
+        ? true
+        : state.blocked;
+  const pauseMediaActive = state.pauseMedia && isBlocked;
 
   // Show toast notification when Codex has a question (non-blocking)
   if (state.waitingForInput > 0) {
