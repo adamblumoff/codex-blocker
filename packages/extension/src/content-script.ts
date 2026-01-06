@@ -172,7 +172,9 @@ function pauseMediaElement(element: HTMLMediaElement): void {
 }
 
 function pauseAllMedia(): void {
-  const mediaElements = Array.from(document.querySelectorAll("video, audio"));
+  const mediaElements = Array.from(
+    document.querySelectorAll<HTMLMediaElement>("video, audio")
+  );
   for (const element of mediaElements) {
     pauseMediaElement(element);
   }
@@ -226,7 +228,9 @@ function attachResumeOnUserGesture(): void {
 }
 
 function pauseNewMedia(): void {
-  const mediaElements = Array.from(document.querySelectorAll("video, audio"));
+  const mediaElements = Array.from(
+    document.querySelectorAll<HTMLMediaElement>("video, audio")
+  );
   for (const element of mediaElements) {
     if (!pausedMedia.has(element)) {
       pauseMediaElement(element);
