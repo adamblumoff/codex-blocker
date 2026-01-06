@@ -10,6 +10,7 @@ interface ExtensionState {
   bypassActive: boolean;
   enabled: boolean;
   pauseMedia: boolean;
+  forceBlock: boolean;
 }
 
 interface BypassStatus {
@@ -34,6 +35,7 @@ const bypassText = document.getElementById("bypass-text") as HTMLElement;
 const bypassStatus = document.getElementById("bypass-status") as HTMLElement;
 const enabledToggle = document.getElementById("enabled-toggle") as HTMLInputElement;
 const pauseMediaToggle = document.getElementById("pause-media-toggle") as HTMLInputElement;
+const forceBlockToggle = document.getElementById("force-block-toggle") as HTMLInputElement;
 
 let bypassCountdown: ReturnType<typeof setInterval> | null = null;
 let currentDomains: string[] = [];
@@ -175,10 +177,15 @@ function updateUI(state: ExtensionState): void {
   enabledToggle.disabled = false;
   pauseMediaToggle.checked = state.pauseMedia;
   pauseMediaToggle.disabled = false;
+  forceBlockToggle.checked = state.forceBlock;
+  forceBlockToggle.disabled = false;
 
   if (!state.enabled) {
     blockStatusEl.textContent = "Muted";
     blockStatusEl.style.color = "var(--text-muted)";
+  } else if (state.forceBlock) {
+    blockStatusEl.textContent = "Always";
+    blockStatusEl.style.color = "var(--accent-red)";
   } else if (state.bypassActive) {
     blockStatusEl.textContent = "Bypassed";
     blockStatusEl.style.color = "var(--accent-amber)";
@@ -270,6 +277,17 @@ pauseMediaToggle.addEventListener("change", () => {
       pauseMediaToggle.checked = !pauseMedia;
     }
     pauseMediaToggle.disabled = false;
+  });
+});
+
+forceBlockToggle.addEventListener("change", () => {
+  const forceBlock = forceBlockToggle.checked;
+  forceBlockToggle.disabled = true;
+  chrome.runtime.sendMessage({ type: "SET_FORCE_BLOCK", forceBlock }, (response) => {
+    if (chrome.runtime.lastError || !response?.success) {
+      forceBlockToggle.checked = !forceBlock;
+    }
+    forceBlockToggle.disabled = false;
   });
 });
 

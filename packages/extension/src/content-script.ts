@@ -9,6 +9,7 @@ const iconUrl = chrome.runtime.getURL("icon-mark.svg");
 interface PublicState {
   enabled: boolean;
   pauseMedia: boolean;
+  forceBlock: boolean;
   serverConnected: boolean;
   sessions: number;
   working: number;
@@ -334,6 +335,7 @@ function handleState(state: PublicState): void {
   }
 
   const pauseMediaActive = state.pauseMedia && state.enabled;
+  const isBlocked = state.forceBlock ? true : state.blocked;
 
   // Show toast notification when Codex has a question (non-blocking)
   if (state.waitingForInput > 0) {
@@ -344,7 +346,7 @@ function handleState(state: PublicState): void {
   }
 
   // Show blocking modal when truly idle
-  if (state.blocked) {
+  if (isBlocked) {
     shouldBeBlocked = true;
     createModal();
     renderState(state);
@@ -363,7 +365,7 @@ function handleState(state: PublicState): void {
     resumePausedMedia();
   }
 
-  lastBlocked = state.blocked;
+  lastBlocked = isBlocked;
   lastPauseMediaActive = pauseMediaActive;
 }
 

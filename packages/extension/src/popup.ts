@@ -7,6 +7,7 @@ interface PopupState {
   working: number;
   bypassActive: boolean;
   enabled: boolean;
+  forceBlock: boolean;
 }
 
 const statusDot = document.getElementById("status-dot") as HTMLElement;
@@ -17,6 +18,7 @@ const blockBadge = document.getElementById("block-badge") as HTMLElement;
 const blockStatus = document.getElementById("block-status") as HTMLElement;
 const settingsBtn = document.getElementById("settings-btn") as HTMLButtonElement;
 const extensionToggle = document.getElementById("extension-enabled") as HTMLInputElement;
+const forceBlockToggle = document.getElementById("force-block-toggle") as HTMLInputElement;
 
 function updateUI(state: PopupState): void {
   // Status indicator
@@ -37,9 +39,14 @@ function updateUI(state: PopupState): void {
 
   extensionToggle.checked = state.enabled;
   extensionToggle.disabled = false;
+  forceBlockToggle.checked = state.forceBlock;
+  forceBlockToggle.disabled = false;
 
   // Block badge
-  if (state.bypassActive) {
+  if (state.forceBlock) {
+    blockBadge.className = "block-badge blocked";
+    blockStatus.textContent = "Always";
+  } else if (state.bypassActive) {
     blockBadge.className = "block-badge bypass";
     blockStatus.textContent = "Bypass";
   } else if (state.blocked) {
@@ -71,6 +78,17 @@ extensionToggle.addEventListener("change", () => {
       extensionToggle.checked = !enabled;
     }
     extensionToggle.disabled = false;
+  });
+});
+
+forceBlockToggle.addEventListener("change", () => {
+  const forceBlock = forceBlockToggle.checked;
+  forceBlockToggle.disabled = true;
+  chrome.runtime.sendMessage({ type: "SET_FORCE_BLOCK", forceBlock }, (response) => {
+    if (chrome.runtime.lastError || !response?.success) {
+      forceBlockToggle.checked = !forceBlock;
+    }
+    forceBlockToggle.disabled = false;
   });
 });
 

@@ -10,6 +10,7 @@ const TOKEN_STORAGE_KEY = "authToken";
 interface State {
   enabled: boolean;
   pauseMedia: boolean;
+  forceBlock: boolean;
   serverConnected: boolean;
   sessions: number;
   working: number;
@@ -20,6 +21,7 @@ interface State {
 const state: State = {
   enabled: true,
   pauseMedia: true,
+  forceBlock: false,
   serverConnected: false,
   sessions: 0,
   working: 0,
@@ -35,7 +37,7 @@ let authToken: string | null = null;
 const statePorts = new Set<chrome.runtime.Port>();
 
 // Load bypass from storage on startup
-chrome.storage.sync.get(["bypassUntil", "enabled", "pauseMedia"], (result) => {
+chrome.storage.sync.get(["bypassUntil", "enabled", "pauseMedia", "forceBlock"], (result) => {
   if (result.bypassUntil && result.bypassUntil > Date.now()) {
     state.bypassUntil = result.bypassUntil;
   }
@@ -44,6 +46,9 @@ chrome.storage.sync.get(["bypassUntil", "enabled", "pauseMedia"], (result) => {
   }
   if (typeof result.pauseMedia === "boolean") {
     state.pauseMedia = result.pauseMedia;
+  }
+  if (typeof result.forceBlock === "boolean") {
+    state.forceBlock = result.forceBlock;
   }
   broadcast();
 });
@@ -83,11 +88,12 @@ function getPublicState() {
   return {
     enabled: state.enabled,
     pauseMedia: state.pauseMedia,
+    forceBlock: state.forceBlock,
     serverConnected: state.serverConnected,
     sessions: state.sessions,
     working: state.working,
     waitingForInput: state.waitingForInput,
-    blocked: state.enabled ? shouldBlock : false,
+    blocked: state.enabled ? (state.forceBlock ? true : shouldBlock) : false,
     bypassActive,
     bypassUntil: state.bypassUntil,
   };
@@ -203,6 +209,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === "SET_PAUSE_MEDIA") {
     state.pauseMedia = Boolean(message.pauseMedia);
     chrome.storage.sync.set({ pauseMedia: state.pauseMedia }, () => {
+      broadcast();
+      sendResponse({ success: true });
+    });
+    return true;
+  }
+
+  if (message.type === "SET_FORCE_BLOCK") {
+    state.forceBlock = Boolean(message.forceBlock);
+    chrome.storage.sync.set({ forceBlock: state.forceBlock }, () => {
       broadcast();
       sendResponse({ success: true });
     });

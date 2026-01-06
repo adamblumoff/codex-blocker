@@ -132,6 +132,10 @@ body {
   margin-bottom: 12px;
 }
 
+.toggle-row + .toggle-row {
+  margin-top: 8px;
+}
+
 .toggle-label {
   font-size: 13px;
   font-weight: 500;

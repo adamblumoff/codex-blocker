@@ -50,7 +50,7 @@ This starts the server. No hooks are required; the server reads Codex session lo
 ### 3. Configure blocked sites
 
 Click the extension icon → Settings to add sites you want blocked when Codex is idle.
-You can also mute blocking or pause media while blocked from Settings.
+You can also mute blocking, enable always-blocking, or pause media while blocked from Settings.
 
 Default blocked sites: `x.com`, `youtube.com`
 
@@ -75,6 +75,7 @@ npx codex-blocker --help
 - **Emergency bypass** — 5-minute bypass, once per day
 - **Configurable sites** — Add/remove sites from extension settings
 - **Mute blocking** — Toggle blocking on/off without disabling the extension
+- **Always blocking** — Force blocking regardless of Codex activity
 - **Pause media** — Auto-pause audio/video while blocked and resume on unblock
 - **Works offline** — Blocks everything when server isn't running (safety default)
 
