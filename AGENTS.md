@@ -31,6 +31,7 @@
   - A clear summary of behavior changes
   - Screenshots/GIFs for UI or extension changes
   - Notes on manual verification (e.g., extension load, server CLI flow)
+- After creating a GitHub release, upload `packages/extension/codex-blocker.zip` as a release asset unless CI already does it.
 
 ## Security & Configuration Tips
 - The server runs locally; avoid adding external network calls without justification.
