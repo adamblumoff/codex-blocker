@@ -9,6 +9,7 @@ interface ExtensionState {
   working: number;
   bypassActive: boolean;
   enabled: boolean;
+  pauseMedia: boolean;
 }
 
 interface BypassStatus {
@@ -32,6 +33,7 @@ const bypassBtn = document.getElementById("bypass-btn") as HTMLButtonElement;
 const bypassText = document.getElementById("bypass-text") as HTMLElement;
 const bypassStatus = document.getElementById("bypass-status") as HTMLElement;
 const enabledToggle = document.getElementById("enabled-toggle") as HTMLInputElement;
+const pauseMediaToggle = document.getElementById("pause-media-toggle") as HTMLInputElement;
 
 let bypassCountdown: ReturnType<typeof setInterval> | null = null;
 let currentDomains: string[] = [];
@@ -171,6 +173,8 @@ function updateUI(state: ExtensionState): void {
   // Block status
   enabledToggle.checked = state.enabled;
   enabledToggle.disabled = false;
+  pauseMediaToggle.checked = state.pauseMedia;
+  pauseMediaToggle.disabled = false;
 
   if (!state.enabled) {
     blockStatusEl.textContent = "Muted";
@@ -255,6 +259,17 @@ enabledToggle.addEventListener("change", () => {
       enabledToggle.checked = !enabled;
     }
     enabledToggle.disabled = false;
+  });
+});
+
+pauseMediaToggle.addEventListener("change", () => {
+  const pauseMedia = pauseMediaToggle.checked;
+  pauseMediaToggle.disabled = true;
+  chrome.runtime.sendMessage({ type: "SET_PAUSE_MEDIA", pauseMedia }, (response) => {
+    if (chrome.runtime.lastError || !response?.success) {
+      pauseMediaToggle.checked = !pauseMedia;
+    }
+    pauseMediaToggle.disabled = false;
   });
 });
 

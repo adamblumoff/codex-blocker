@@ -222,6 +222,10 @@ section {
   border-radius: 14px;
 }
 
+.toggle-row + .toggle-row {
+  margin-top: 12px;
+}
+
 .toggle-label {
   font-size: 14px;
   font-weight: 500;

@@ -9,6 +9,7 @@ const TOKEN_STORAGE_KEY = "authToken";
 // The actual state - service worker is single source of truth
 interface State {
   enabled: boolean;
+  pauseMedia: boolean;
   serverConnected: boolean;
   sessions: number;
   working: number;
@@ -18,6 +19,7 @@ interface State {
 
 const state: State = {
   enabled: true,
+  pauseMedia: true,
   serverConnected: false,
   sessions: 0,
   working: 0,
@@ -33,12 +35,15 @@ let authToken: string | null = null;
 const statePorts = new Set<chrome.runtime.Port>();
 
 // Load bypass from storage on startup
-chrome.storage.sync.get(["bypassUntil", "enabled"], (result) => {
+chrome.storage.sync.get(["bypassUntil", "enabled", "pauseMedia"], (result) => {
   if (result.bypassUntil && result.bypassUntil > Date.now()) {
     state.bypassUntil = result.bypassUntil;
   }
   if (typeof result.enabled === "boolean") {
     state.enabled = result.enabled;
+  }
+  if (typeof result.pauseMedia === "boolean") {
+    state.pauseMedia = result.pauseMedia;
   }
   broadcast();
 });
@@ -77,6 +82,7 @@ function getPublicState() {
 
   return {
     enabled: state.enabled,
+    pauseMedia: state.pauseMedia,
     serverConnected: state.serverConnected,
     sessions: state.sessions,
     working: state.working,
@@ -188,6 +194,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === "SET_ENABLED") {
     state.enabled = Boolean(message.enabled);
     chrome.storage.sync.set({ enabled: state.enabled }, () => {
+      broadcast();
+      sendResponse({ success: true });
+    });
+    return true;
+  }
+
+  if (message.type === "SET_PAUSE_MEDIA") {
+    state.pauseMedia = Boolean(message.pauseMedia);
+    chrome.storage.sync.set({ pauseMedia: state.pauseMedia }, () => {
       broadcast();
       sendResponse({ success: true });
     });
