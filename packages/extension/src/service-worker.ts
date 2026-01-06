@@ -1,3 +1,5 @@
+import { applyOverrides, computeShouldBlock } from "./lib/blocking.js";
+
 export {};
 
 const WS_URL_BASE = "ws://localhost:8765/ws";
@@ -85,19 +87,15 @@ function buildWsUrl(): string {
 // Compute derived state
 function getPublicState() {
   const bypassActive = state.bypassUntil !== null && state.bypassUntil > Date.now();
-  const hasActiveSession = state.sessions > 0;
-  const isIdle = state.working === 0 && state.waitingForInput === 0;
   // Safety default: block when server is offline, or when an active session is idle.
-  const shouldBlock =
-    !bypassActive && (!state.serverConnected || (hasActiveSession && isIdle));
-  const cancelOverride = state.forceBlock && state.forceOpen;
-  const effectiveBlocked = cancelOverride
-    ? shouldBlock
-    : state.forceOpen
-      ? false
-      : state.forceBlock
-        ? true
-        : shouldBlock;
+  const shouldBlock = computeShouldBlock({
+    bypassActive,
+    serverConnected: state.serverConnected,
+    sessions: state.sessions,
+    working: state.working,
+    waitingForInput: state.waitingForInput,
+  });
+  const effectiveBlocked = applyOverrides(shouldBlock, state.forceOpen, state.forceBlock);
 
   return {
     forceOpen: state.forceOpen,
