@@ -21,6 +21,7 @@ let lastKnownState: PublicState | null = null;
 let shouldBeBlocked = false;
 let blockedDomains: string[] = [];
 let toastDismissed = false;
+let observerActive = false;
 
 // Load domains from storage
 function loadDomains(): Promise<string[]> {
@@ -155,6 +156,8 @@ function removeToast(): void {
 
 // Watch for our modal being removed by the page and re-add it
 function setupMutationObserver(): void {
+  if (observerActive) return;
+  observerActive = true;
   const observer = new MutationObserver(() => {
     if (shouldBeBlocked && !getModal()) {
       // Modal was removed but should exist - re-create it
@@ -292,9 +295,9 @@ chrome.runtime.onMessage.addListener((message) => {
 // Initialize
 async function init(): Promise<void> {
   blockedDomains = await loadDomains();
+  setupMutationObserver();
 
   if (isBlockedDomain()) {
-    setupMutationObserver();
     createModal();
     requestState();
   }

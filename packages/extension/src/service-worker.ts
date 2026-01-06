@@ -39,6 +39,7 @@ chrome.storage.sync.get(["bypassUntil", "enabled"], (result) => {
   if (typeof result.enabled === "boolean") {
     state.enabled = result.enabled;
   }
+  broadcast();
 });
 
 function generateToken(): string {
