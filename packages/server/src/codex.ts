@@ -2,7 +2,7 @@ import { existsSync, createReadStream, promises as fs } from "fs";
 import { homedir } from "os";
 import { basename, dirname, join } from "path";
 import { state } from "./state.js";
-import { CODEX_ACTIVITY_IDLE_TIMEOUT_MS, CODEX_SESSIONS_SCAN_INTERVAL_MS } from "./types.js";
+import { CODEX_SESSIONS_SCAN_INTERVAL_MS } from "./types.js";
 
 const CODEX_HOME = process.env.CODEX_HOME ?? join(homedir(), ".codex");
 const CODEX_SESSIONS_DIR = join(CODEX_HOME, "sessions");
@@ -138,7 +138,6 @@ function handleLine(line: string, fileState: FileState): void {
     state.handleCodexActivity({
       sessionId,
       cwd,
-      idleTimeoutMs: CODEX_ACTIVITY_IDLE_TIMEOUT_MS,
     });
   }
   if (shouldMarkIdle) {

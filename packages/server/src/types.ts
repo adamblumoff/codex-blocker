@@ -1,7 +1,7 @@
 export interface CodexActivity {
   sessionId: string;
   cwd?: string;
-  idleTimeoutMs: number;
+  idleTimeoutMs?: number;
 }
 
 // Session state tracked by server
@@ -32,5 +32,4 @@ export type ClientMessage = { type: "ping" } | { type: "subscribe" };
 // Server configuration
 export const DEFAULT_PORT = 8765;
 export const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
-export const CODEX_ACTIVITY_IDLE_TIMEOUT_MS = 60 * 1000; // 1 minute
 export const CODEX_SESSIONS_SCAN_INTERVAL_MS = 2_000; // 2 seconds

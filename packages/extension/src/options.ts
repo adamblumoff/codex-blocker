@@ -22,6 +22,7 @@ interface BypassStatus {
 // Elements
 const statusIndicator = document.getElementById("status-indicator") as HTMLElement;
 const statusText = document.getElementById("status-text") as HTMLElement;
+const versionEl = document.getElementById("extension-version") as HTMLElement;
 const sessionsEl = document.getElementById("sessions") as HTMLElement;
 const workingEl = document.getElementById("working") as HTMLElement;
 const blockStatusEl = document.getElementById("block-status") as HTMLElement;
@@ -310,6 +311,10 @@ chrome.runtime.onMessage.addListener((message) => {
 
 // Initialize
 async function init(): Promise<void> {
+  const manifest = chrome.runtime.getManifest();
+  if (versionEl && manifest?.version) {
+    versionEl.textContent = `v${manifest.version}`;
+  }
   currentDomains = await loadDomains();
   renderDomains();
   refreshState();
