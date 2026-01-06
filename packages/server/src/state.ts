@@ -3,7 +3,7 @@ import { SESSION_TIMEOUT_MS } from "./types.js";
 
 type StateChangeCallback = (message: ServerMessage) => void;
 
-class SessionState {
+export class SessionState {
   private sessions: Map<string, Session> = new Map();
   private listeners: Set<StateChangeCallback> = new Set();
   private cleanupInterval: NodeJS.Timeout | null = null;

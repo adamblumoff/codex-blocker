@@ -1,58 +1,21 @@
 import { existsSync, createReadStream, promises as fs } from "fs";
 import { homedir } from "os";
-import { basename, dirname, join } from "path";
-import { state } from "./state.js";
+import { join } from "path";
+import { SessionState } from "./state.js";
+import {
+  isRolloutFile,
+  parseCodexLine,
+  sessionIdFromPath,
+} from "./codex-parse.js";
 import { CODEX_SESSIONS_SCAN_INTERVAL_MS } from "./types.js";
 
-const CODEX_HOME = process.env.CODEX_HOME ?? join(homedir(), ".codex");
-const CODEX_SESSIONS_DIR = join(CODEX_HOME, "sessions");
+const DEFAULT_CODEX_HOME = join(homedir(), ".codex");
 
 type FileState = {
   position: number;
   remainder: string;
   sessionId: string;
 };
-
-function isRolloutFile(filePath: string): boolean {
-  const name = basename(filePath);
-  return name === "rollout.jsonl" || /^rollout-.+\.jsonl$/.test(name);
-}
-
-function sessionIdFromPath(filePath: string): string {
-  const name = basename(filePath);
-  const match = name.match(/^rollout-(.+)\.jsonl$/);
-  if (match) return match[1];
-  if (name === "rollout.jsonl") {
-    const parent = basename(dirname(filePath));
-    if (parent !== "sessions") return parent;
-  }
-  return filePath;
-}
-
-function findFirstStringValue(obj: unknown, keys: string[], maxDepth = 6): string | undefined {
-  if (!obj || typeof obj !== "object") return undefined;
-  const queue: Array<{ value: unknown; depth: number }> = [{ value: obj, depth: 0 }];
-  while (queue.length) {
-    const current = queue.shift();
-    if (!current) break;
-    const { value, depth } = current;
-    if (!value || typeof value !== "object") continue;
-    const record = value as Record<string, unknown>;
-    for (const key of keys) {
-      const candidate = record[key];
-      if (typeof candidate === "string" && candidate.length > 0) {
-        return candidate;
-      }
-    }
-    if (depth >= maxDepth) continue;
-    for (const child of Object.values(record)) {
-      if (child && typeof child === "object") {
-        queue.push({ value: child, depth: depth + 1 });
-      }
-    }
-  }
-  return undefined;
-}
 
 async function listRolloutFiles(root: string): Promise<string[]> {
   const files: string[] = [];
@@ -93,62 +56,22 @@ async function readNewLines(filePath: string, fileState: FileState): Promise<str
   return lines.filter((line) => line.trim().length > 0);
 }
 
-function handleLine(line: string, fileState: FileState): void {
-  let sessionId = fileState.sessionId;
-  let cwd: string | undefined;
-  let shouldMarkWorking = false;
-  let shouldMarkIdle = false;
-  try {
-    const payload = JSON.parse(line) as Record<string, unknown>;
-    const entryType = typeof payload.type === "string" ? payload.type : undefined;
-    const innerPayload = payload.payload;
-    const innerType =
-      innerPayload && typeof innerPayload === "object"
-        ? (innerPayload as Record<string, unknown>).type
-        : undefined;
-
-    if (entryType === "session_meta") {
-      const metaId =
-        innerPayload && typeof innerPayload === "object"
-          ? (innerPayload as Record<string, unknown>).id
-          : undefined;
-      if (typeof metaId === "string" && metaId.length > 0 && metaId !== sessionId) {
-        const previousId = sessionId;
-        fileState.sessionId = metaId;
-        sessionId = metaId;
-        state.removeSession(previousId);
-      }
-    }
-
-    cwd = findFirstStringValue(innerPayload, ["cwd"]) ?? findFirstStringValue(payload, ["cwd"]);
-
-    const innerTypeString = typeof innerType === "string" ? innerType : undefined;
-    if (entryType === "event_msg" && innerTypeString === "user_message") {
-      shouldMarkWorking = true;
-    }
-    if (entryType === "event_msg" && innerTypeString === "agent_message") {
-      shouldMarkIdle = true;
-    }
-  } catch {
-    // Ignore malformed lines
-  }
-
-  state.markCodexSessionSeen(sessionId, cwd);
-  if (shouldMarkWorking) {
-    state.handleCodexActivity({
-      sessionId,
-      cwd,
-    });
-  }
-  if (shouldMarkIdle) {
-    state.setCodexIdle(sessionId, cwd);
-  }
-}
+export type CodexSessionWatcherOptions = {
+  sessionsDir?: string;
+};
 
 export class CodexSessionWatcher {
   private fileStates: Map<string, FileState> = new Map();
   private scanTimer: NodeJS.Timeout | null = null;
   private warnedMissing = false;
+  private sessionsDir: string;
+  private state: SessionState;
+
+  constructor(state: SessionState, options?: CodexSessionWatcherOptions) {
+    this.state = state;
+    const base = process.env.CODEX_HOME ?? DEFAULT_CODEX_HOME;
+    this.sessionsDir = options?.sessionsDir ?? join(base, "sessions");
+  }
 
   start(): void {
     this.scan();
@@ -165,9 +88,9 @@ export class CodexSessionWatcher {
   }
 
   private async scan(): Promise<void> {
-    if (!existsSync(CODEX_SESSIONS_DIR)) {
+    if (!existsSync(this.sessionsDir)) {
       if (!this.warnedMissing) {
-        console.log(`Waiting for Codex sessions at ${CODEX_SESSIONS_DIR}`);
+        console.log(`Waiting for Codex sessions at ${this.sessionsDir}`);
         this.warnedMissing = true;
       }
       return;
@@ -176,7 +99,7 @@ export class CodexSessionWatcher {
 
     let files: string[] = [];
     try {
-      files = await listRolloutFiles(CODEX_SESSIONS_DIR);
+      files = await listRolloutFiles(this.sessionsDir);
     } catch {
       return;
     }
@@ -207,7 +130,21 @@ export class CodexSessionWatcher {
       }
       if (newLines.length === 0) continue;
       for (const line of newLines) {
-        handleLine(line, fileState);
+        const parsed = parseCodexLine(line, fileState.sessionId);
+        fileState.sessionId = parsed.sessionId;
+        if (parsed.previousSessionId) {
+          this.state.removeSession(parsed.previousSessionId);
+        }
+        this.state.markCodexSessionSeen(parsed.sessionId, parsed.cwd);
+        if (parsed.markWorking) {
+          this.state.handleCodexActivity({
+            sessionId: parsed.sessionId,
+            cwd: parsed.cwd,
+          });
+        }
+        if (parsed.markIdle) {
+          this.state.setCodexIdle(parsed.sessionId, parsed.cwd);
+        }
       }
     }
   }

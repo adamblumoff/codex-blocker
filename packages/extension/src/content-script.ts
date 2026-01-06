@@ -1,8 +1,10 @@
+import { applyOverrides } from "./lib/blocking.js";
+import { DEFAULT_DOMAINS } from "./lib/domains.js";
+
 export {};
 
 const MODAL_ID = "codex-blocker-modal";
 const TOAST_ID = "codex-blocker-toast";
-const DEFAULT_DOMAINS = ["x.com", "youtube.com"];
 const iconUrl = chrome.runtime.getURL("icon-mark.svg");
 
 // State shape from service worker
@@ -338,13 +340,7 @@ function handleState(state: PublicState): void {
     return;
   }
 
-  const isBlocked = state.forceOpen && state.forceBlock
-    ? state.blocked
-    : state.forceOpen
-      ? false
-      : state.forceBlock
-        ? true
-        : state.blocked;
+  const isBlocked = applyOverrides(state.blocked, state.forceOpen, state.forceBlock);
   const pauseMediaActive = state.pauseMedia && isBlocked;
 
   // Show toast notification when Codex has a question (non-blocking)

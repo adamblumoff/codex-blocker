@@ -1,15 +1,15 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "http";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { homedir } from "os";
-import { join } from "path";
+import { dirname, join } from "path";
 import { WebSocketServer, WebSocket } from "ws";
 import type { ClientMessage } from "./types.js";
 import { DEFAULT_PORT } from "./types.js";
-import { state } from "./state.js";
+import { SessionState, state as defaultState } from "./state.js";
 import { CodexSessionWatcher } from "./codex.js";
 
-const TOKEN_DIR = join(homedir(), ".codex-blocker");
-const TOKEN_PATH = join(TOKEN_DIR, "token");
+const DEFAULT_TOKEN_DIR = join(homedir(), ".codex-blocker");
+const DEFAULT_TOKEN_PATH = join(DEFAULT_TOKEN_DIR, "token");
 const RATE_WINDOW_MS = 60_000;
 const RATE_LIMIT = 60;
 const MAX_WS_CONNECTIONS_PER_IP = 3;
@@ -18,20 +18,21 @@ type RateState = { count: number; resetAt: number };
 const rateByIp = new Map<string, RateState>();
 const wsConnectionsByIp = new Map<string, number>();
 
-function loadToken(): string | null {
-  if (!existsSync(TOKEN_PATH)) return null;
+function loadToken(tokenPath: string): string | null {
+  if (!existsSync(tokenPath)) return null;
   try {
-    return readFileSync(TOKEN_PATH, "utf-8").trim() || null;
+    return readFileSync(tokenPath, "utf-8").trim() || null;
   } catch {
     return null;
   }
 }
 
-function saveToken(token: string): void {
-  if (!existsSync(TOKEN_DIR)) {
-    mkdirSync(TOKEN_DIR, { recursive: true });
+function saveToken(tokenPath: string, token: string): void {
+  const tokenDir = dirname(tokenPath);
+  if (!existsSync(tokenDir)) {
+    mkdirSync(tokenDir, { recursive: true });
   }
-  writeFileSync(TOKEN_PATH, token, "utf-8");
+  writeFileSync(tokenPath, token, "utf-8");
 }
 
 function isChromeExtensionOrigin(origin?: string | null): boolean {
@@ -71,8 +72,29 @@ function sendJson(res: ServerResponse, data: unknown, status = 200): void {
   res.end(JSON.stringify(data));
 }
 
-export function startServer(port: number = DEFAULT_PORT): void {
-  let authToken = loadToken();
+export type ServerOptions = {
+  sessionsDir?: string;
+  startWatcher?: boolean;
+  tokenPath?: string;
+  state?: SessionState;
+  log?: boolean;
+};
+
+export type ServerHandle = {
+  port: number;
+  ready: Promise<number>;
+  close: () => Promise<void>;
+};
+
+export function startServer(
+  port: number = DEFAULT_PORT,
+  options?: ServerOptions
+): ServerHandle {
+  const stateInstance = options?.state ?? defaultState;
+  const tokenPath = options?.tokenPath ?? DEFAULT_TOKEN_PATH;
+  const startWatcher = options?.startWatcher ?? true;
+  const logBanner = options?.log ?? true;
+  let authToken = loadToken(tokenPath);
   const server = createServer(async (req, res) => {
     const clientIp = getClientIp(req);
     if (!checkRateLimit(clientIp)) {
@@ -107,7 +129,7 @@ export function startServer(port: number = DEFAULT_PORT): void {
       }
     } else if (providedToken && allowOrigin) {
       authToken = providedToken;
-      saveToken(providedToken);
+      saveToken(tokenPath, providedToken);
     } else {
       sendJson(res, { error: "Unauthorized" }, 401);
       return;
@@ -115,7 +137,7 @@ export function startServer(port: number = DEFAULT_PORT): void {
 
     // Health check / status endpoint
     if (req.method === "GET" && url.pathname === "/status") {
-      sendJson(res, state.getStatus());
+      sendJson(res, stateInstance.getStatus());
       return;
     }
 
@@ -146,7 +168,7 @@ export function startServer(port: number = DEFAULT_PORT): void {
       }
     } else if (providedToken && allowOrigin) {
       authToken = providedToken;
-      saveToken(providedToken);
+      saveToken(tokenPath, providedToken);
     } else {
       ws.close(1008, "Unauthorized");
       return;
@@ -155,7 +177,7 @@ export function startServer(port: number = DEFAULT_PORT): void {
     wsConnectionsByIp.set(clientIp, currentConnections + 1);
 
     // Subscribe to state changes
-    const unsubscribe = state.subscribe((message) => {
+    const unsubscribe = stateInstance.subscribe((message) => {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify(message));
       }
@@ -190,17 +212,42 @@ export function startServer(port: number = DEFAULT_PORT): void {
     });
   });
 
-  const codexWatcher = new CodexSessionWatcher();
-  codexWatcher.start();
+  const codexWatcher = new CodexSessionWatcher(stateInstance, {
+    sessionsDir: options?.sessionsDir,
+  });
+  if (startWatcher) {
+    codexWatcher.start();
+  }
+
+  let resolveReady: (value: number) => void = () => {};
+  const ready = new Promise<number>((resolve) => {
+    resolveReady = resolve;
+  });
+
+  const handle: ServerHandle = {
+    port,
+    ready,
+    close: async () => {
+      stateInstance.destroy();
+      codexWatcher.stop();
+      await new Promise<void>((resolve) => wss.close(() => resolve()));
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    },
+  };
 
   server.listen(port, "127.0.0.1", () => {
+    const address = server.address();
+    const actualPort = typeof address === "object" && address ? address.port : port;
+    handle.port = actualPort;
+    resolveReady(actualPort);
+    if (!logBanner) return;
     console.log(`
 ┌─────────────────────────────────────┐
 │                                     │
 │   Codex Blocker Server              │
 │                                     │
-│   HTTP:      http://localhost:${port}  │
-│   WebSocket: ws://localhost:${port}/ws │
+│   HTTP:      http://localhost:${actualPort}  │
+│   WebSocket: ws://localhost:${actualPort}/ws │
 │                                     │
 │   Watching Codex sessions...        │
 │                                     │
@@ -210,11 +257,11 @@ export function startServer(port: number = DEFAULT_PORT): void {
 
   // Graceful shutdown - use once to prevent stacking handlers
   process.once("SIGINT", () => {
-    console.log("\nShutting down...");
-    state.destroy();
-    codexWatcher.stop();
-    wss.close();
-    server.close();
-    process.exit(0);
+    if (logBanner) {
+      console.log("\nShutting down...");
+    }
+    void handle.close().then(() => process.exit(0));
   });
+
+  return handle;
 }

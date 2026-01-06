@@ -1,6 +1,6 @@
-export {};
+import { DEFAULT_DOMAINS, isValidDomain, normalizeDomain } from "./lib/domains.js";
 
-const DEFAULT_DOMAINS = ["x.com", "youtube.com"];
+export {};
 
 interface ExtensionState {
   blocked: boolean;
@@ -63,21 +63,6 @@ async function saveDomains(domains: string[]): Promise<void> {
       resolve();
     });
   });
-}
-
-// Normalize domain input
-function normalizeDomain(input: string): string {
-  let domain = input.toLowerCase().trim();
-  domain = domain.replace(/^https?:\/\//, "");
-  domain = domain.replace(/^www\./, "");
-  domain = domain.replace(/\/.*$/, "");
-  return domain;
-}
-
-// Validate domain format
-function isValidDomain(domain: string): boolean {
-  const regex = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}$/;
-  return regex.test(domain);
 }
 
 // Render the domain list
