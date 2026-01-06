@@ -122,6 +122,68 @@ body {
   letter-spacing: 0.5px;
 }
 
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: #1c1c1e;
+  border-radius: 8px;
+  margin-bottom: 12px;
+}
+
+.toggle-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #fff;
+}
+
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 34px;
+  height: 20px;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  inset: 0;
+  background: #3a3a3c;
+  border-radius: 999px;
+  transition: background 0.15s;
+}
+
+.slider::before {
+  content: "";
+  position: absolute;
+  height: 16px;
+  width: 16px;
+  left: 2px;
+  top: 2px;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.15s;
+}
+
+.switch input:checked + .slider {
+  background: #30d158;
+  box-shadow: 0 0 8px rgba(48, 209, 88, 0.4);
+}
+
+.switch input:checked + .slider::before {
+  transform: translateX(14px);
+}
+
+.switch input:disabled + .slider {
+  opacity: 0.6;
+}
+
 .settings-btn {
   display: flex;
   align-items: center;

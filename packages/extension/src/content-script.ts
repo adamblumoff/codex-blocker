@@ -7,6 +7,7 @@ const iconUrl = chrome.runtime.getURL("icon-mark.svg");
 
 // State shape from service worker
 interface PublicState {
+  enabled: boolean;
   serverConnected: boolean;
   sessions: number;
   working: number;
@@ -226,6 +227,13 @@ function renderError(): void {
 // Handle state updates from service worker
 function handleState(state: PublicState): void {
   lastKnownState = state;
+
+  if (!state.enabled) {
+    shouldBeBlocked = false;
+    removeModal();
+    removeToast();
+    return;
+  }
 
   if (!isBlockedDomain()) {
     shouldBeBlocked = false;

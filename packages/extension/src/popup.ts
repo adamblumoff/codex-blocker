@@ -6,6 +6,7 @@ interface PopupState {
   sessions: number;
   working: number;
   bypassActive: boolean;
+  enabled: boolean;
 }
 
 const statusDot = document.getElementById("status-dot") as HTMLElement;
@@ -15,6 +16,7 @@ const workingEl = document.getElementById("working") as HTMLElement;
 const blockBadge = document.getElementById("block-badge") as HTMLElement;
 const blockStatus = document.getElementById("block-status") as HTMLElement;
 const settingsBtn = document.getElementById("settings-btn") as HTMLButtonElement;
+const extensionToggle = document.getElementById("extension-enabled") as HTMLInputElement;
 
 function updateUI(state: PopupState): void {
   // Status indicator
@@ -32,6 +34,9 @@ function updateUI(state: PopupState): void {
   // Stats
   sessionsEl.textContent = String(state.sessions);
   workingEl.textContent = String(state.working);
+
+  extensionToggle.checked = state.enabled;
+  extensionToggle.disabled = false;
 
   // Block badge
   if (state.bypassActive) {
@@ -56,6 +61,17 @@ function refreshState(): void {
 
 settingsBtn.addEventListener("click", () => {
   chrome.runtime.openOptionsPage();
+});
+
+extensionToggle.addEventListener("change", () => {
+  const enabled = extensionToggle.checked;
+  extensionToggle.disabled = true;
+  chrome.runtime.sendMessage({ type: "SET_ENABLED", enabled }, (response) => {
+    if (chrome.runtime.lastError || !response?.success) {
+      extensionToggle.checked = !enabled;
+    }
+    extensionToggle.disabled = false;
+  });
 });
 
 chrome.runtime.onMessage.addListener((message) => {

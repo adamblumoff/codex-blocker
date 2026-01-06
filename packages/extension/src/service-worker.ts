@@ -8,6 +8,7 @@ const TOKEN_STORAGE_KEY = "authToken";
 
 // The actual state - service worker is single source of truth
 interface State {
+  enabled: boolean;
   serverConnected: boolean;
   sessions: number;
   working: number;
@@ -16,6 +17,7 @@ interface State {
 }
 
 const state: State = {
+  enabled: true,
   serverConnected: false,
   sessions: 0,
   working: 0,
@@ -30,9 +32,12 @@ let retryCount = 0;
 let authToken: string | null = null;
 
 // Load bypass from storage on startup
-chrome.storage.sync.get(["bypassUntil"], (result) => {
+chrome.storage.sync.get(["bypassUntil", "enabled"], (result) => {
   if (result.bypassUntil && result.bypassUntil > Date.now()) {
     state.bypassUntil = result.bypassUntil;
+  }
+  if (typeof result.enabled === "boolean") {
+    state.enabled = result.enabled;
   }
 });
 
@@ -69,11 +74,12 @@ function getPublicState() {
     !bypassActive && (!state.serverConnected || (hasActiveSession && isIdle));
 
   return {
+    enabled: state.enabled,
     serverConnected: state.serverConnected,
     sessions: state.sessions,
     working: state.working,
     waitingForInput: state.waitingForInput,
-    blocked: shouldBlock,
+    blocked: state.enabled ? shouldBlock : false,
     bypassActive,
     bypassUntil: state.bypassUntil,
   };
@@ -82,6 +88,7 @@ function getPublicState() {
 // Broadcast current state to all tabs
 function broadcast() {
   const publicState = getPublicState();
+  chrome.runtime.sendMessage({ type: "STATE", ...publicState }).catch(() => {});
   chrome.tabs.query({}, (tabs) => {
     for (const tab of tabs) {
       if (tab.id) {
@@ -166,6 +173,15 @@ function scheduleReconnect() {
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (message.type === "GET_STATE") {
     sendResponse(getPublicState());
+    return true;
+  }
+
+  if (message.type === "SET_ENABLED") {
+    state.enabled = Boolean(message.enabled);
+    chrome.storage.sync.set({ enabled: state.enabled }, () => {
+      broadcast();
+      sendResponse({ success: true });
+    });
     return true;
   }
 
