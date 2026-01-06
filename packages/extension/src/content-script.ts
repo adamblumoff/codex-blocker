@@ -8,6 +8,7 @@ const iconUrl = chrome.runtime.getURL("icon-mark.svg");
 // State shape from service worker
 interface PublicState {
   enabled: boolean;
+  pauseMedia: boolean;
   serverConnected: boolean;
   sessions: number;
   working: number;
@@ -24,6 +25,11 @@ let toastDismissed = false;
 let observerActive = false;
 let statePort: chrome.runtime.Port | null = null;
 let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+let lastBlocked = false;
+let lastPauseMediaActive = true;
+const pausedMedia = new Set<HTMLMediaElement>();
+const pendingResume = new Set<HTMLMediaElement>();
+let resumeListenerAttached = false;
 
 // Load domains from storage
 function loadDomains(): Promise<string[]> {
@@ -156,6 +162,77 @@ function removeToast(): void {
   getToast()?.remove();
 }
 
+function pauseMediaElement(element: HTMLMediaElement): void {
+  if (element.paused) return;
+  try {
+    element.pause();
+    pausedMedia.add(element);
+  } catch {}
+}
+
+function pauseAllMedia(): void {
+  const mediaElements = Array.from(document.querySelectorAll("video, audio"));
+  for (const element of mediaElements) {
+    pauseMediaElement(element);
+  }
+}
+
+function resumePausedMedia(): void {
+  for (const element of pausedMedia) {
+    if (!element.isConnected) {
+      pausedMedia.delete(element);
+      continue;
+    }
+    try {
+      if (element.paused) {
+        element.play().catch(() => {
+          pendingResume.add(element);
+          attachResumeOnUserGesture();
+        });
+      }
+    } catch {}
+    pausedMedia.delete(element);
+  }
+}
+
+function attachResumeOnUserGesture(): void {
+  if (resumeListenerAttached) return;
+  resumeListenerAttached = true;
+
+  const resume = () => {
+    resumeListenerAttached = false;
+    window.removeEventListener("click", resume, true);
+    window.removeEventListener("keydown", resume, true);
+    window.removeEventListener("touchstart", resume, true);
+
+    for (const element of Array.from(pendingResume)) {
+      if (!element.isConnected) {
+        pendingResume.delete(element);
+        continue;
+      }
+      try {
+        if (element.paused) {
+          element.play().catch(() => {});
+        }
+      } catch {}
+      pendingResume.delete(element);
+    }
+  };
+
+  window.addEventListener("click", resume, true);
+  window.addEventListener("keydown", resume, true);
+  window.addEventListener("touchstart", resume, true);
+}
+
+function pauseNewMedia(): void {
+  const mediaElements = Array.from(document.querySelectorAll("video, audio"));
+  for (const element of mediaElements) {
+    if (!pausedMedia.has(element)) {
+      pauseMediaElement(element);
+    }
+  }
+}
+
 // Watch for our modal being removed by the page and re-add it
 function setupMutationObserver(): void {
   if (observerActive) return;
@@ -167,6 +244,9 @@ function setupMutationObserver(): void {
       if (lastKnownState) {
         renderState(lastKnownState);
       }
+    }
+    if (lastBlocked && lastPauseMediaActive) {
+      pauseNewMedia();
     }
   });
 
@@ -237,6 +317,9 @@ function handleState(state: PublicState): void {
     shouldBeBlocked = false;
     removeModal();
     removeToast();
+    resumePausedMedia();
+    lastBlocked = false;
+    lastPauseMediaActive = false;
     return;
   }
 
@@ -244,8 +327,13 @@ function handleState(state: PublicState): void {
     shouldBeBlocked = false;
     removeModal();
     removeToast();
+    resumePausedMedia();
+    lastBlocked = false;
+    lastPauseMediaActive = false;
     return;
   }
+
+  const pauseMediaActive = state.pauseMedia && state.enabled;
 
   // Show toast notification when Codex has a question (non-blocking)
   if (state.waitingForInput > 0) {
@@ -260,10 +348,23 @@ function handleState(state: PublicState): void {
     shouldBeBlocked = true;
     createModal();
     renderState(state);
+    if (pauseMediaActive && (!lastBlocked || !lastPauseMediaActive)) {
+      pauseAllMedia();
+    }
   } else {
     shouldBeBlocked = false;
     removeModal();
+    if (pauseMediaActive) {
+      resumePausedMedia();
+    }
   }
+
+  if (!pauseMediaActive) {
+    resumePausedMedia();
+  }
+
+  lastBlocked = state.blocked;
+  lastPauseMediaActive = pauseMediaActive;
 }
 
 function connectStatePort(): void {
