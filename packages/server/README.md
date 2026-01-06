@@ -39,7 +39,8 @@ npx codex-blocker --help
 ## How It Works
 
 1. **Codex sessions** — The server tails Codex session logs under `~/.codex/sessions`
-   to detect activity.
+   to detect activity. It marks a session “working” on your prompt and “idle” on the
+   final assistant reply (tool calls don’t count as idle).
 
 2. **Server** — Runs on localhost and:
    - Tracks active Codex sessions

@@ -21,7 +21,7 @@ Block distracting websites unless Codex is actively running inference.
 ```
 
 1. **Codex session logs** are tailed by the server to detect activity
-2. **Blocker server** tracks all Codex sessions and their working/idle states
+2. **Blocker server** tracks Codex turns (working starts on your prompt, ends on final reply)
 3. **Chrome extension** blocks configured sites when no session is actively working
 
 ## Quick Start
@@ -50,6 +50,7 @@ This starts the server. No hooks are required; the server reads Codex session lo
 ### 3. Configure blocked sites
 
 Click the extension icon → Settings to add sites you want blocked when Codex is idle.
+You can also mute blocking or pause media while blocked from Settings.
 
 Default blocked sites: `x.com`, `youtube.com`
 
@@ -73,6 +74,8 @@ npx codex-blocker --help
 - **Multi-session support** — Tracks multiple Codex instances
 - **Emergency bypass** — 5-minute bypass, once per day
 - **Configurable sites** — Add/remove sites from extension settings
+- **Mute blocking** — Toggle blocking on/off without disabling the extension
+- **Pause media** — Auto-pause audio/video while blocked and resume on unblock
 - **Works offline** — Blocks everything when server isn't running (safety default)
 
 ## Requirements
