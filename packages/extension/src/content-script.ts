@@ -22,6 +22,8 @@ let shouldBeBlocked = false;
 let blockedDomains: string[] = [];
 let toastDismissed = false;
 let observerActive = false;
+let statePort: chrome.runtime.Port | null = null;
+let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 
 // Load domains from storage
 function loadDomains(): Promise<string[]> {
@@ -264,18 +266,33 @@ function handleState(state: PublicState): void {
   }
 }
 
-// Request state from service worker
-function requestState(): void {
-  chrome.runtime.sendMessage({ type: "GET_STATE" }, (response) => {
-    if (chrome.runtime.lastError || !response) {
-      // Service worker not ready, retry
-      setTimeout(requestState, 500);
-      createModal();
-      renderError();
-      return;
+function connectStatePort(): void {
+  if (statePort) return;
+  try {
+    const port = chrome.runtime.connect({ name: "state" });
+    statePort = port;
+
+    port.onMessage.addListener((message) => {
+      if (message.type === "STATE") {
+        handleState(message);
+      }
+    });
+
+    port.onDisconnect.addListener(() => {
+      statePort = null;
+      if (reconnectTimeout) {
+        clearTimeout(reconnectTimeout);
+      }
+      reconnectTimeout = setTimeout(connectStatePort, 500);
+    });
+
+    port.postMessage({ type: "GET_STATE" });
+  } catch {
+    if (reconnectTimeout) {
+      clearTimeout(reconnectTimeout);
     }
-    handleState(response);
-  });
+    reconnectTimeout = setTimeout(connectStatePort, 500);
+  }
 }
 
 // Listen for broadcasts from service worker
@@ -299,8 +316,10 @@ async function init(): Promise<void> {
 
   if (isBlockedDomain()) {
     createModal();
-    requestState();
+    renderError();
   }
+
+  connectStatePort();
 }
 
 init();

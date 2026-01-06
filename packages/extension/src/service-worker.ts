@@ -30,6 +30,7 @@ let keepaliveInterval: ReturnType<typeof setInterval> | null = null;
 let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 let retryCount = 0;
 let authToken: string | null = null;
+const statePorts = new Set<chrome.runtime.Port>();
 
 // Load bypass from storage on startup
 chrome.storage.sync.get(["bypassUntil", "enabled"], (result) => {
@@ -89,6 +90,13 @@ function getPublicState() {
 // Broadcast current state to all tabs
 function broadcast() {
   const publicState = getPublicState();
+  for (const port of statePorts) {
+    try {
+      port.postMessage({ type: "STATE", ...publicState });
+    } catch {
+      statePorts.delete(port);
+    }
+  }
   chrome.runtime.sendMessage({ type: "STATE", ...publicState }).catch(() => {});
   chrome.tabs.query({}, (tabs) => {
     for (const tab of tabs) {
@@ -214,6 +222,23 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   return false;
+});
+
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== "state") return;
+  statePorts.add(port);
+
+  port.onMessage.addListener((message) => {
+    if (message?.type === "GET_STATE") {
+      port.postMessage({ type: "STATE", ...getPublicState() });
+    }
+  });
+
+  port.onDisconnect.addListener(() => {
+    statePorts.delete(port);
+  });
+
+  port.postMessage({ type: "STATE", ...getPublicState() });
 });
 
 // Check bypass expiry
