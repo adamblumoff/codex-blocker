@@ -98,6 +98,12 @@ pnpm build
 
 # Development mode
 pnpm dev
+
+# Run tests
+pnpm test
+
+# Run tests with coverage (report is printed to terminal only)
+pnpm test:coverage
 ```
 
 ### Project Structure
