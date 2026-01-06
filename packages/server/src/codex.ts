@@ -126,20 +126,8 @@ function handleLine(line: string, fileState: FileState): void {
     if (entryType === "event_msg" && innerTypeString === "user_message") {
       shouldMarkWorking = true;
     }
-    if (
-      entryType === "event_msg" &&
-      (innerTypeString === "agent_message" || innerTypeString === "turn_aborted")
-    ) {
+    if (entryType === "event_msg" && innerTypeString === "agent_message") {
       shouldMarkIdle = true;
-    }
-    if (entryType === "response_item" && innerTypeString === "message") {
-      const role =
-        innerPayload && typeof innerPayload === "object"
-          ? (innerPayload as Record<string, unknown>).role
-          : undefined;
-      if (role === "assistant") {
-        shouldMarkIdle = true;
-      }
     }
   } catch {
     // Ignore malformed lines
