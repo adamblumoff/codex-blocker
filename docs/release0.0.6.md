@@ -15,6 +15,7 @@ This release focuses on tighter control over blocking behavior, better state syn
 - Popup and Settings now include Always open + Always blocking toggles.
 - Settings include Pause media toggle (default on).
 - Block status UI reflects override state.
+- Removed the `tabs` permission; state and domain updates now use runtime messaging only.
 
 ## Server changes
 - Session activity now tracks turns based on user message start and agent message end.

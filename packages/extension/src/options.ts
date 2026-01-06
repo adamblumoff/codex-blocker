@@ -59,14 +59,7 @@ async function loadDomains(): Promise<string[]> {
 async function saveDomains(domains: string[]): Promise<void> {
   return new Promise((resolve) => {
     chrome.storage.sync.set({ blockedDomains: domains }, () => {
-      // Notify all tabs about the change
-      chrome.tabs.query({}, (tabs) => {
-        for (const tab of tabs) {
-          if (tab.id) {
-            chrome.tabs.sendMessage(tab.id, { type: "DOMAINS_UPDATED", domains }).catch(() => {});
-          }
-        }
-      });
+      chrome.runtime.sendMessage({ type: "DOMAINS_UPDATED", domains }).catch(() => {});
       resolve();
     });
   });

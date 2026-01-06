@@ -124,13 +124,6 @@ function broadcast() {
     }
   }
   chrome.runtime.sendMessage({ type: "STATE", ...publicState }).catch(() => {});
-  chrome.tabs.query({}, (tabs) => {
-    for (const tab of tabs) {
-      if (tab.id) {
-        chrome.tabs.sendMessage(tab.id, { type: "STATE", ...publicState }).catch(() => {});
-      }
-    }
-  });
 }
 
 // WebSocket connection management
