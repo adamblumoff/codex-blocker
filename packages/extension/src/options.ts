@@ -8,6 +8,7 @@ interface ExtensionState {
   sessions: number;
   working: number;
   bypassActive: boolean;
+  enabled: boolean;
 }
 
 interface BypassStatus {
@@ -30,6 +31,7 @@ const siteCount = document.getElementById("site-count") as HTMLElement;
 const bypassBtn = document.getElementById("bypass-btn") as HTMLButtonElement;
 const bypassText = document.getElementById("bypass-text") as HTMLElement;
 const bypassStatus = document.getElementById("bypass-status") as HTMLElement;
+const enabledToggle = document.getElementById("enabled-toggle") as HTMLInputElement;
 
 let bypassCountdown: ReturnType<typeof setInterval> | null = null;
 let currentDomains: string[] = [];
@@ -167,7 +169,13 @@ function updateUI(state: ExtensionState): void {
   workingEl.textContent = String(state.working);
 
   // Block status
-  if (state.bypassActive) {
+  enabledToggle.checked = state.enabled;
+  enabledToggle.disabled = false;
+
+  if (!state.enabled) {
+    blockStatusEl.textContent = "Muted";
+    blockStatusEl.style.color = "var(--text-muted)";
+  } else if (state.bypassActive) {
     blockStatusEl.textContent = "Bypassed";
     blockStatusEl.style.color = "var(--accent-amber)";
   } else if (state.blocked) {
@@ -237,6 +245,17 @@ function refreshState(): void {
 addForm.addEventListener("submit", (e) => {
   e.preventDefault();
   addDomain(domainInput.value);
+});
+
+enabledToggle.addEventListener("change", () => {
+  const enabled = enabledToggle.checked;
+  enabledToggle.disabled = true;
+  chrome.runtime.sendMessage({ type: "SET_ENABLED", enabled }, (response) => {
+    if (chrome.runtime.lastError || !response?.success) {
+      enabledToggle.checked = !enabled;
+    }
+    enabledToggle.disabled = false;
+  });
 });
 
 bypassBtn.addEventListener("click", () => {
