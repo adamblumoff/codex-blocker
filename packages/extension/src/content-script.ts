@@ -1,11 +1,21 @@
 import { applyOverrides } from "./lib/blocking.js";
 import { DEFAULT_DOMAINS } from "./lib/domains.js";
+import { startPhraseRotation } from "./lib/phrase-rotation.js";
 
 export {};
 
 const MODAL_ID = "codex-blocker-modal";
 const TOAST_ID = "codex-blocker-toast";
 const iconUrl = chrome.runtime.getURL("icon-mark.svg");
+const PHRASE_ROTATION_MS = 3200;
+const ROTATING_PHRASES = [
+  "Codex called, it wants you back.",
+  "Alt-tab back to Codex, hero.",
+  "Plot twist: Codex is the main quest.",
+  "Quick detour? Codex awaits.",
+  "This tab is a side quest.",
+  "Codex is lonely. Send help.",
+];
 
 // State shape from service worker
 interface PublicState {
@@ -33,6 +43,7 @@ let lastPauseMediaActive = true;
 const pausedMedia = new Set<HTMLMediaElement>();
 const pendingResume = new Set<HTMLMediaElement>();
 let resumeListenerAttached = false;
+let stopHeadlineRotation: (() => void) | null = null;
 
 // Load domains from storage
 function loadDomains(): Promise<string[]> {
@@ -69,10 +80,19 @@ function createModal(): void {
 
   // Use inline styles with bulletproof Arial font (won't change when page loads custom fonts)
   shadow.innerHTML = `
+    <style>
+      @keyframes codex-phrase-fade {
+        0% { opacity: 0; transform: translateY(4px); }
+        100% { opacity: 1; transform: translateY(0); }
+      }
+      .codex-phrase-animate {
+        animation: codex-phrase-fade 0.6s ease;
+      }
+    </style>
     <div style="all:initial;position:fixed;top:0;left:0;right:0;bottom:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5;z-index:2147483647;-webkit-font-smoothing:antialiased;">
       <div style="all:initial;background:#1a1a1a;border:1px solid #333;border-radius:16px;padding:40px;max-width:480px;text-align:center;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased;">
         <img src="${iconUrl}" alt="" style="width:72px;height:72px;margin-bottom:24px;display:inline-block;filter:drop-shadow(0 4px 12px rgba(255, 215, 0, 0.25));"/>
-        <div style="color:#fff;font-size:24px;font-weight:bold;margin:0 0 16px;line-height:1.2;">Time to Work</div>
+        <div id="headline" style="color:#fff;font-size:24px;font-weight:bold;margin:0 0 16px;line-height:1.2;">Time to Work!</div>
         <div id="message" style="color:#888;font-size:16px;line-height:1.5;margin:0 0 24px;font-weight:normal;">Loading...</div>
         <div style="display:inline-flex;align-items:center;gap:8px;padding:8px 16px;background:#2a2a2a;border-radius:20px;font-size:14px;color:#666;line-height:1;">
           <span id="dot" style="width:8px;height:8px;border-radius:50%;background:#666;flex-shrink:0;"></span>
@@ -127,9 +147,14 @@ function createModal(): void {
 
   // Mount to documentElement (html) instead of body - more resilient to React hydration
   document.documentElement.appendChild(container);
+  stopHeadlineRotation = startHeadlineRotation(shadow);
 }
 
 function removeModal(): void {
+  if (stopHeadlineRotation) {
+    stopHeadlineRotation();
+    stopHeadlineRotation = null;
+  }
   getModal()?.remove();
 }
 
@@ -163,6 +188,24 @@ function showToast(): void {
 
 function removeToast(): void {
   getToast()?.remove();
+}
+
+function startHeadlineRotation(shadow: ShadowRoot): () => void {
+  const headline = shadow.getElementById("headline");
+  if (!headline) return () => {};
+
+  const setPhrase = (phrase: string) => {
+    headline.textContent = phrase;
+    headline.classList.remove("codex-phrase-animate");
+    void headline.offsetWidth;
+    headline.classList.add("codex-phrase-animate");
+  };
+
+  return startPhraseRotation({
+    phrases: ROTATING_PHRASES,
+    intervalMs: PHRASE_ROTATION_MS,
+    onPhrase: setPhrase,
+  });
 }
 
 function pauseMediaElement(element: HTMLMediaElement): void {

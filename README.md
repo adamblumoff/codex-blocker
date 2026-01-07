@@ -70,6 +70,7 @@ npx codex-blocker --help
 ## Features
 
 - **Soft blocking** — Sites show a modal overlay, not a hard block
+- **Rotating nudges** — Friendly, rotating phrases in the block modal
 - **Real-time updates** — No page refresh needed when state changes
 - **Multi-session support** — Tracks multiple Codex instances
 - **Emergency bypass** — 5-minute bypass, once per day
