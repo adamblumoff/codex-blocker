@@ -7,14 +7,14 @@ export {};
 const MODAL_ID = "codex-blocker-modal";
 const TOAST_ID = "codex-blocker-toast";
 const iconUrl = chrome.runtime.getURL("icon-mark.svg");
-const PHRASE_ROTATION_MS = 3200;
+const PHRASE_ROTATION_MS = 6000;
 const ROTATING_PHRASES = [
-  "Codex called, it wants you back.",
-  "Alt-tab back to Codex, hero.",
-  "Plot twist: Codex is the main quest.",
-  "Quick detour? Codex awaits.",
-  "This tab is a side quest.",
-  "Codex is lonely. Send help.",
+  "Well… back to work.",
+  "I’m not sure what to do with my hands.",
+  "That’s a bold strategy, Cotton.",
+  "Let’s just see how this plays out.",
+  "Well, that escalated quickly.",
+  "Shake and bake.",
 ];
 
 // State shape from service worker
@@ -44,6 +44,7 @@ const pausedMedia = new Set<HTMLMediaElement>();
 const pendingResume = new Set<HTMLMediaElement>();
 let resumeListenerAttached = false;
 let stopHeadlineRotation: (() => void) | null = null;
+let rotationStartAtPromise: Promise<number> | null = null;
 
 // Load domains from storage
 function loadDomains(): Promise<string[]> {
@@ -147,7 +148,10 @@ function createModal(): void {
 
   // Mount to documentElement (html) instead of body - more resilient to React hydration
   document.documentElement.appendChild(container);
-  stopHeadlineRotation = startHeadlineRotation(shadow);
+  getRotationStartAt().then((startAt) => {
+    if (!getModal()) return;
+    stopHeadlineRotation = startHeadlineRotation(shadow, startAt);
+  });
 }
 
 function stopHeadlineRotationIfNeeded(): void {
@@ -194,7 +198,7 @@ function removeToast(): void {
   getToast()?.remove();
 }
 
-function startHeadlineRotation(shadow: ShadowRoot): () => void {
+function startHeadlineRotation(shadow: ShadowRoot, startAtMs: number): () => void {
   const headline = shadow.getElementById("headline");
   if (!headline) return () => {};
 
@@ -209,7 +213,24 @@ function startHeadlineRotation(shadow: ShadowRoot): () => void {
     phrases: ROTATING_PHRASES,
     intervalMs: PHRASE_ROTATION_MS,
     onPhrase: setPhrase,
+    startAtMs,
   });
+}
+
+function getRotationStartAt(): Promise<number> {
+  if (rotationStartAtPromise) return rotationStartAtPromise;
+  rotationStartAtPromise = new Promise((resolve) => {
+    chrome.runtime.sendMessage({ type: "GET_ROTATION_START" }, (response) => {
+      const fallback = Date.now();
+      if (chrome.runtime.lastError) {
+        resolve(fallback);
+        return;
+      }
+      const startAt = response?.startAt;
+      resolve(typeof startAt === "number" ? startAt : fallback);
+    });
+  });
+  return rotationStartAtPromise;
 }
 
 function pauseMediaElement(element: HTMLMediaElement): void {

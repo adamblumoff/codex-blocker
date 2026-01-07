@@ -7,6 +7,7 @@ const KEEPALIVE_INTERVAL = 20_000;
 const RECONNECT_BASE_DELAY = 1_000;
 const RECONNECT_MAX_DELAY = 30_000;
 const TOKEN_STORAGE_KEY = "authToken";
+const ROTATION_START_KEY = "rotationStartAt";
 
 // The actual state - service worker is single source of truth
 interface State {
@@ -38,6 +39,7 @@ let keepaliveInterval: ReturnType<typeof setInterval> | null = null;
 let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 let retryCount = 0;
 let authToken: string | null = null;
+let rotationStartAt: number | null = null;
 const statePorts = new Set<chrome.runtime.Port>();
 
 // Load bypass from storage on startup
@@ -60,6 +62,26 @@ chrome.storage.sync.get(
   }
   broadcast();
 });
+
+function ensureRotationStartAt(resolve: (startAt: number) => void): void {
+  if (rotationStartAt) {
+    resolve(rotationStartAt);
+    return;
+  }
+
+  chrome.storage.local.get([ROTATION_START_KEY], (result) => {
+    const stored = result[ROTATION_START_KEY];
+    if (typeof stored === "number") {
+      rotationStartAt = stored;
+      resolve(stored);
+      return;
+    }
+
+    const now = Date.now();
+    rotationStartAt = now;
+    chrome.storage.local.set({ [ROTATION_START_KEY]: now }, () => resolve(now));
+  });
+}
 
 function generateToken(): string {
   const bytes = new Uint8Array(32);
@@ -263,6 +285,11 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
         bypassUntil: state.bypassUntil,
       });
     });
+    return true;
+  }
+
+  if (message.type === "GET_ROTATION_START") {
+    ensureRotationStartAt((startAt) => sendResponse({ startAt }));
     return true;
   }
 
