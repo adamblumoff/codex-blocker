@@ -150,11 +150,15 @@ function createModal(): void {
   stopHeadlineRotation = startHeadlineRotation(shadow);
 }
 
-function removeModal(): void {
+function stopHeadlineRotationIfNeeded(): void {
   if (stopHeadlineRotation) {
     stopHeadlineRotation();
     stopHeadlineRotation = null;
   }
+}
+
+function removeModal(): void {
+  stopHeadlineRotationIfNeeded();
   getModal()?.remove();
 }
 
@@ -290,6 +294,7 @@ function setupMutationObserver(): void {
   const observer = new MutationObserver(() => {
     if (shouldBeBlocked && !getModal()) {
       // Modal was removed but should exist - re-create it
+      stopHeadlineRotationIfNeeded();
       createModal();
       if (lastKnownState) {
         renderState(lastKnownState);
