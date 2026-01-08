@@ -17,8 +17,8 @@ type FileState = {
   sessionId: string;
 };
 
-const TAIL_MAX_BYTES = 64 * 1024;
-const TAIL_MAX_LINES = 200;
+const TAIL_MAX_BYTES = 1024 * 1024;
+const TAIL_MAX_LINES = 2000;
 
 async function listRolloutFiles(root: string): Promise<string[]> {
   const files: string[] = [];
