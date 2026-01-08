@@ -1,6 +1,6 @@
 {
   "name": "codex-blocker",
-  "version": "0.0.10-alpha.4",
+  "version": "0.0.10-alpha.5",
   "description": "Block distracting websites unless Codex is actively running inference. Forked from Theo Browne's (T3) Claude Blocker",
   "author": "Adam Blumoff ",
   "repository": {

@@ -33,6 +33,7 @@ let statePort: chrome.runtime.Port | null = null;
 let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 let lastBlocked = false;
 let lastPauseMediaActive = true;
+let bypassPending = false;
 const pausedMedia = new Set<HTMLMediaElement>();
 const pendingResume = new Set<HTMLMediaElement>();
 let resumeListenerAttached = false;
@@ -113,10 +114,29 @@ function createModal(): void {
     });
 
     bypassBtn.addEventListener("click", () => {
+      bypassPending = true;
       chrome.runtime.sendMessage({ type: "ACTIVATE_BYPASS" }, (response) => {
+        if (chrome.runtime.lastError) {
+          bypassPending = false;
+          return;
+        }
         if (response?.success) {
+          // Optimistically unblock to avoid modal flicker before state broadcast.
+          shouldBeBlocked = false;
+          lastBlocked = false;
+          lastPauseMediaActive = false;
+          resumePausedMedia();
+          removeToast();
           removeModal();
+          chrome.runtime.sendMessage({ type: "GET_STATE" }, (state: PublicState) => {
+            if (state) {
+              handleState(state);
+            } else {
+              bypassPending = false;
+            }
+          });
         } else if (response?.reason) {
+          bypassPending = false;
           bypassBtn.textContent = response.reason;
           (bypassBtn as HTMLButtonElement).disabled = true;
           bypassBtn.style.opacity = "0.5";
@@ -317,7 +337,7 @@ function setupMutationObserver(): void {
   if (observerActive) return;
   observerActive = true;
   const observer = new MutationObserver(() => {
-    if (shouldBeBlocked && !getModal()) {
+    if (shouldBeBlocked && !bypassPending && !getModal()) {
       // Modal was removed but should exist - re-create it
       stopHeadlineRotationIfNeeded();
       createModal();
@@ -392,6 +412,9 @@ function renderError(): void {
 // Handle state updates from service worker
 function handleState(state: PublicState): void {
   lastKnownState = state;
+  if (bypassPending) {
+    bypassPending = false;
+  }
 
   if (state.forceOpen && !state.forceBlock) {
     shouldBeBlocked = false;

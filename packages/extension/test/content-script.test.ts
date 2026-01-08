@@ -13,12 +13,14 @@ describe("content-script", () => {
   > = [];
   let portMessageListener: ((message: any) => void) | null = null;
   let video: HTMLVideoElement | null = null;
+  let runtimeMessages: any[] = [];
 
   beforeEach(() => {
     vi.useFakeTimers();
     runtimeMessageListeners = [];
     storageChangeListeners = [];
     portMessageListener = null;
+    runtimeMessages = [];
 
     document.body.innerHTML = "";
     video = document.createElement("video");
@@ -58,6 +60,7 @@ describe("content-script", () => {
         getURL: (path: string) => `chrome-extension://${path}`,
         connect: vi.fn(() => port),
         sendMessage: (message: any, callback?: (response?: any) => void) => {
+          runtimeMessages.push(message);
           if (message.type === "GET_BYPASS_STATUS") {
             callback?.({ usedToday: false, bypassActive: false, bypassUntil: null });
             return;
@@ -68,6 +71,20 @@ describe("content-script", () => {
           }
           if (message.type === "ACTIVATE_BYPASS") {
             callback?.({ success: true });
+            return;
+          }
+          if (message.type === "GET_STATE") {
+            callback?.({
+              pauseMedia: false,
+              forceBlock: false,
+              forceOpen: false,
+              serverConnected: true,
+              sessions: 1,
+              working: 0,
+              waitingForInput: 0,
+              blocked: false,
+              bypassActive: true,
+            });
             return;
           }
           callback?.();
@@ -140,6 +157,13 @@ describe("content-script", () => {
 
     expect(document.getElementById("codex-blocker-modal")).not.toBeNull();
     expect(document.getElementById("codex-blocker-toast")).not.toBeNull();
+
+    const modal = document.getElementById("codex-blocker-modal") as HTMLElement;
+    const bypassBtn = modal.shadowRoot?.getElementById("bypass-btn") as HTMLButtonElement;
+    bypassBtn?.click();
+
+    expect(runtimeMessages.some((msg) => msg.type === "ACTIVATE_BYPASS")).toBe(true);
+    expect(runtimeMessages.some((msg) => msg.type === "GET_STATE")).toBe(true);
 
     portMessageListener?.({
       type: "STATE",
