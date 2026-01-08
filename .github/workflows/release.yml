@@ -56,8 +56,18 @@ jobs:
       - name: Zip extension
         run: pnpm --filter @codex-blocker/extension zip
 
+      - name: Resolve npm tag
+        id: npm_tag
+        run: |
+          tag="${GITHUB_REF#refs/tags/v}"
+          if [[ "$tag" == *"-alpha"* ]]; then
+            echo "tag=alpha" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Publish npm package
-        run: npm publish
+        run: npm publish --tag "${{ steps.npm_tag.outputs.tag }}"
         working-directory: packages/server
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
