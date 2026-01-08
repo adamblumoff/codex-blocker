@@ -17,8 +17,6 @@ const workingEl = document.getElementById("working") as HTMLElement;
 const blockBadge = document.getElementById("block-badge") as HTMLElement;
 const blockStatus = document.getElementById("block-status") as HTMLElement;
 const settingsBtn = document.getElementById("settings-btn") as HTMLButtonElement;
-const extensionToggle = document.getElementById("extension-enabled") as HTMLInputElement;
-const forceBlockToggle = document.getElementById("force-block-toggle") as HTMLInputElement;
 const roastToggle = document.getElementById("roast-toggle") as HTMLInputElement;
 
 function updateUI(state: PopupState): void {
@@ -37,11 +35,6 @@ function updateUI(state: PopupState): void {
   // Stats
   sessionsEl.textContent = String(state.sessions);
   workingEl.textContent = String(state.working);
-
-  extensionToggle.checked = state.forceOpen;
-  extensionToggle.disabled = false;
-  forceBlockToggle.checked = state.forceBlock;
-  forceBlockToggle.disabled = false;
 
   // Block badge
   if (state.forceBlock && !state.forceOpen) {
@@ -75,28 +68,6 @@ function refreshRoastMode(): void {
 
 settingsBtn.addEventListener("click", () => {
   chrome.runtime.openOptionsPage();
-});
-
-extensionToggle.addEventListener("change", () => {
-  const forceOpen = extensionToggle.checked;
-  extensionToggle.disabled = true;
-  chrome.runtime.sendMessage({ type: "SET_FORCE_OPEN", forceOpen }, (response) => {
-    if (chrome.runtime.lastError || !response?.success) {
-      extensionToggle.checked = !forceOpen;
-    }
-    extensionToggle.disabled = false;
-  });
-});
-
-forceBlockToggle.addEventListener("change", () => {
-  const forceBlock = forceBlockToggle.checked;
-  forceBlockToggle.disabled = true;
-  chrome.runtime.sendMessage({ type: "SET_FORCE_BLOCK", forceBlock }, (response) => {
-    if (chrome.runtime.lastError || !response?.success) {
-      forceBlockToggle.checked = !forceBlock;
-    }
-    forceBlockToggle.disabled = false;
-  });
 });
 
 roastToggle.addEventListener("change", () => {
