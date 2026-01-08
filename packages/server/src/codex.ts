@@ -7,7 +7,7 @@ import {
   parseCodexLine,
   sessionIdFromPath,
 } from "./codex-parse.js";
-import { CODEX_SESSIONS_SCAN_INTERVAL_MS } from "./types.js";
+import { CODEX_SESSIONS_SCAN_INTERVAL_MS, SESSION_TIMEOUT_MS } from "./types.js";
 
 const DEFAULT_CODEX_HOME = join(homedir(), ".codex");
 
@@ -19,6 +19,15 @@ type FileState = {
 
 const TAIL_MAX_BYTES = 1024 * 1024;
 const TAIL_MAX_LINES = 2000;
+
+export function isSessionFileRecent(
+  stat: { mtimeMs: number },
+  nowMs = Date.now()
+): boolean {
+  const ageMs = nowMs - stat.mtimeMs;
+  if (!Number.isFinite(ageMs)) return true;
+  return ageMs <= SESSION_TIMEOUT_MS;
+}
 
 async function listRolloutFiles(root: string): Promise<string[]> {
   const files: string[] = [];
@@ -122,6 +131,7 @@ export class CodexSessionWatcher {
   }
 
   private async scan(): Promise<void> {
+    const nowMs = Date.now();
     if (!existsSync(this.sessionsDir)) {
       if (!this.warnedMissing) {
         console.log(`Waiting for Codex sessions at ${this.sessionsDir}`);
@@ -150,6 +160,9 @@ export class CodexSessionWatcher {
         try {
           const stat = await fs.stat(filePath);
           fileState.position = stat.size;
+          if (!isSessionFileRecent(stat, nowMs)) {
+            continue;
+          }
           const tailLines = await readTailLines(
             filePath,
             stat.size,
