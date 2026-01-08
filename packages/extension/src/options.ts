@@ -37,6 +37,7 @@ const bypassStatus = document.getElementById("bypass-status") as HTMLElement;
 const enabledToggle = document.getElementById("enabled-toggle") as HTMLInputElement;
 const pauseMediaToggle = document.getElementById("pause-media-toggle") as HTMLInputElement;
 const forceBlockToggle = document.getElementById("force-block-toggle") as HTMLInputElement;
+const roastToggle = document.getElementById("roast-toggle") as HTMLInputElement;
 
 let bypassCountdown: ReturnType<typeof setInterval> | null = null;
 let currentDomains: string[] = [];
@@ -231,6 +232,12 @@ function refreshState(): void {
   });
 }
 
+function refreshRoastMode(): void {
+  chrome.storage.sync.get(["roastMode"], (result) => {
+    roastToggle.checked = Boolean(result.roastMode);
+  });
+}
+
 // Event listeners
 addForm.addEventListener("submit", (e) => {
   e.preventDefault();
@@ -270,6 +277,17 @@ forceBlockToggle.addEventListener("change", () => {
   });
 });
 
+roastToggle.addEventListener("change", () => {
+  const roastMode = roastToggle.checked;
+  roastToggle.disabled = true;
+  chrome.storage.sync.set({ roastMode }, () => {
+    if (chrome.runtime.lastError) {
+      roastToggle.checked = !roastMode;
+    }
+    roastToggle.disabled = false;
+  });
+});
+
 bypassBtn.addEventListener("click", () => {
   chrome.runtime.sendMessage({ type: "ACTIVATE_BYPASS" }, (response) => {
     if (response?.success) {
@@ -287,15 +305,23 @@ chrome.runtime.onMessage.addListener((message) => {
   }
 });
 
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === "sync" && changes.roastMode) {
+    roastToggle.checked = Boolean(changes.roastMode.newValue);
+  }
+});
+
 // Initialize
 async function init(): Promise<void> {
   const manifest = chrome.runtime.getManifest();
-  if (versionEl && manifest?.version) {
-    versionEl.textContent = `v${manifest.version}`;
+  if (versionEl && (manifest?.version || manifest?.version_name)) {
+    const version = manifest.version_name ?? manifest.version;
+    versionEl.textContent = version ? `v${version}` : "";
   }
   currentDomains = await loadDomains();
   renderDomains();
   refreshState();
+  refreshRoastMode();
 }
 
 init();

@@ -39,13 +39,26 @@ jobs:
           tag="${GITHUB_REF#refs/tags/v}"
           server_version="$(node -p "require('./packages/server/package.json').version")"
           extension_version="$(node -p "require('./packages/extension/manifest.json').version")"
+          extension_version_name="$(node -p "require('./packages/extension/manifest.json').version_name || ''")"
           if [ "$server_version" != "$tag" ]; then
             echo "Server version $server_version does not match tag $tag"
             exit 1
           fi
-          if [ "$extension_version" != "$tag" ]; then
-            echo "Extension version $extension_version does not match tag $tag"
-            exit 1
+          if [[ "$tag" == *"-alpha."* ]]; then
+            expected_extension_version="${tag/-alpha./.}"
+            if [ "$extension_version" != "$expected_extension_version" ]; then
+              echo "Extension version $extension_version does not match expected $expected_extension_version for tag $tag"
+              exit 1
+            fi
+            if [ "$extension_version_name" != "$tag" ]; then
+              echo "Extension version_name $extension_version_name does not match tag $tag"
+              exit 1
+            fi
+          else
+            if [ "$extension_version" != "$tag" ]; then
+              echo "Extension version $extension_version does not match tag $tag"
+              exit 1
+            fi
           fi
 
       - name: Test

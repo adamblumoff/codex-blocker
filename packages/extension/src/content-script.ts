@@ -1,5 +1,6 @@
 import { applyOverrides } from "./lib/blocking.js";
 import { DEFAULT_DOMAINS } from "./lib/domains.js";
+import { getPhrasesForMode } from "./lib/phrases.js";
 import { startPhraseRotation } from "./lib/phrase-rotation.js";
 
 export {};
@@ -8,14 +9,6 @@ const MODAL_ID = "codex-blocker-modal";
 const TOAST_ID = "codex-blocker-toast";
 const iconUrl = chrome.runtime.getURL("icon-mark.svg");
 const PHRASE_ROTATION_MS = 6000;
-const ROTATING_PHRASES = [
-  "Well… back to work.",
-  "I’m not sure what to do with my hands.",
-  "That’s a bold strategy, Cotton.",
-  "Let’s just see how this plays out.",
-  "Well, that escalated quickly.",
-  "Shake and bake.",
-];
 
 // State shape from service worker
 interface PublicState {
@@ -91,15 +84,15 @@ function createModal(): void {
       }
     </style>
     <div style="all:initial;position:fixed;top:0;left:0;right:0;bottom:0;width:100vw;height:100vh;background:rgba(0,0,0,0.85);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5;z-index:2147483647;-webkit-font-smoothing:antialiased;">
-      <div style="all:initial;background:#1a1a1a;border:1px solid #333;border-radius:16px;padding:40px;max-width:480px;text-align:center;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased;">
+      <div style="all:initial;display:block;background:#1a1a1a;border:1px solid #333;border-radius:16px;padding:40px;width:440px;max-width:92vw;box-sizing:border-box;text-align:center;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased;">
         <img src="${iconUrl}" alt="" style="width:72px;height:72px;margin-bottom:24px;display:inline-block;filter:drop-shadow(0 4px 12px rgba(255, 215, 0, 0.25));"/>
-        <div id="headline" style="color:#fff;font-size:24px;font-weight:bold;margin:0 0 16px;line-height:1.2;">Time to Work!</div>
-        <div id="message" style="color:#888;font-size:16px;line-height:1.5;margin:0 0 24px;font-weight:normal;">Loading...</div>
+        <div id="headline" style="color:#fff;font-size:24px;font-weight:bold;margin:0 0 16px;line-height:1.2;white-space:normal;word-break:normal;overflow-wrap:normal;text-wrap:pretty;">Time to Work!</div>
+        <div id="message" style="color:#888;font-size:16px;line-height:1.5;margin:0 0 24px;font-weight:normal;white-space:normal;word-break:normal;overflow-wrap:normal;text-wrap:pretty;">Loading...</div>
         <div style="display:inline-flex;align-items:center;gap:8px;padding:8px 16px;background:#2a2a2a;border-radius:20px;font-size:14px;color:#666;line-height:1;">
           <span id="dot" style="width:8px;height:8px;border-radius:50%;background:#666;flex-shrink:0;"></span>
           <span id="status" style="color:#666;font-size:14px;font-family:Arial,Helvetica,sans-serif;">...</span>
         </div>
-        <div id="hint" style="margin-top:24px;font-size:13px;color:#555;line-height:1.4;font-family:Arial,Helvetica,sans-serif;"></div>
+        <div id="hint" style="margin-top:24px;font-size:13px;color:#555;line-height:1.4;font-family:Arial,Helvetica,sans-serif;white-space:normal;word-break:normal;overflow-wrap:normal;text-wrap:pretty;"></div>
         <button id="bypass-btn" style="all:initial;margin-top:24px;padding:12px 24px;background:#333;border:1px solid #444;border-radius:8px;color:#888;font-family:Arial,Helvetica,sans-serif;font-size:13px;cursor:pointer;transition:all 0.2s;">
           Give me 5 minutes (1x per day)
         </button>
@@ -148,9 +141,13 @@ function createModal(): void {
 
   // Mount to documentElement (html) instead of body - more resilient to React hydration
   document.documentElement.appendChild(container);
-  getRotationStartAt().then((startAt) => {
+  Promise.all([getRotationStartAt(), getRoastMode()]).then(([startAt, roastMode]) => {
     if (!getModal()) return;
-    stopHeadlineRotation = startHeadlineRotation(shadow, startAt);
+    stopHeadlineRotation = startHeadlineRotation(
+      shadow,
+      startAt,
+      getPhrasesForMode(roastMode),
+    );
   });
 }
 
@@ -198,7 +195,19 @@ function removeToast(): void {
   getToast()?.remove();
 }
 
-function startHeadlineRotation(shadow: ShadowRoot, startAtMs: number): () => void {
+function getRoastMode(): Promise<boolean> {
+  return new Promise((resolve) => {
+    chrome.storage.sync.get(["roastMode"], (result) => {
+      resolve(Boolean(result.roastMode));
+    });
+  });
+}
+
+function startHeadlineRotation(
+  shadow: ShadowRoot,
+  startAtMs: number,
+  phrases: string[],
+): () => void {
   const headline = shadow.getElementById("headline");
   if (!headline) return () => {};
 
@@ -210,7 +219,7 @@ function startHeadlineRotation(shadow: ShadowRoot, startAtMs: number): () => voi
   };
 
   return startPhraseRotation({
-    phrases: ROTATING_PHRASES,
+    phrases,
     intervalMs: PHRASE_ROTATION_MS,
     onPhrase: setPhrase,
     startAtMs,
@@ -362,7 +371,7 @@ function renderState(state: PublicState): void {
     status.textContent = "Waiting for Codex";
     hint.textContent = "Open a terminal and start Codex";
   } else {
-    message.textContent = "Your job finished!";
+    message.textContent = "Back to the grind.";
     setDotColor(dot, "green");
     status.textContent = `${state.sessions} session${state.sessions > 1 ? "s" : ""} idle`;
     hint.textContent = "Type a prompt in Codex to unblock";
@@ -485,6 +494,22 @@ chrome.runtime.onMessage.addListener((message) => {
       handleState(lastKnownState);
     }
   }
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "sync" || !changes.roastMode) return;
+  const roastMode = Boolean(changes.roastMode.newValue);
+  const shadow = getShadow();
+  if (!shadow) return;
+  stopHeadlineRotationIfNeeded();
+  getRotationStartAt().then((startAt) => {
+    if (!getModal()) return;
+    stopHeadlineRotation = startHeadlineRotation(
+      shadow,
+      startAt,
+      getPhrasesForMode(roastMode),
+    );
+  });
 });
 
 // Initialize
