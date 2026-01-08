@@ -17,6 +17,9 @@ type FileState = {
   sessionId: string;
 };
 
+const TAIL_MAX_BYTES = 64 * 1024;
+const TAIL_MAX_LINES = 200;
+
 async function listRolloutFiles(root: string): Promise<string[]> {
   const files: string[] = [];
   const entries = await fs.readdir(root, { withFileTypes: true });
@@ -29,6 +32,37 @@ async function listRolloutFiles(root: string): Promise<string[]> {
     }
   }
   return files;
+}
+
+async function readTailLines(
+  filePath: string,
+  fileSize: number,
+  maxBytes: number,
+  maxLines: number
+): Promise<string[]> {
+  if (fileSize === 0) return [];
+  const start = Math.max(0, fileSize - maxBytes);
+  const end = Math.max(fileSize - 1, start);
+  const chunks: Buffer[] = [];
+  await new Promise<void>((resolve, reject) => {
+    const stream = createReadStream(filePath, { start, end });
+    stream.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+    stream.on("error", reject);
+    stream.on("end", resolve);
+  });
+
+  let content = Buffer.concat(chunks).toString("utf-8");
+  let lines = content.split("\n");
+  if (start > 0 && content[0] !== "\n") {
+    lines = lines.slice(1);
+  }
+  if (lines.length > 0 && lines[lines.length - 1]?.trim() === "") {
+    lines.pop();
+  }
+  if (lines.length > maxLines) {
+    lines = lines.slice(-maxLines);
+  }
+  return lines.filter((line) => line.trim().length > 0);
 }
 
 async function readNewLines(filePath: string, fileState: FileState): Promise<string[]> {
@@ -116,6 +150,15 @@ export class CodexSessionWatcher {
         try {
           const stat = await fs.stat(filePath);
           fileState.position = stat.size;
+          const tailLines = await readTailLines(
+            filePath,
+            stat.size,
+            TAIL_MAX_BYTES,
+            TAIL_MAX_LINES
+          );
+          if (tailLines.length > 0) {
+            this.processLines(tailLines, fileState);
+          }
         } catch {
           continue;
         }
@@ -129,22 +172,26 @@ export class CodexSessionWatcher {
         continue;
       }
       if (newLines.length === 0) continue;
-      for (const line of newLines) {
-        const parsed = parseCodexLine(line, fileState.sessionId);
-        fileState.sessionId = parsed.sessionId;
-        if (parsed.previousSessionId) {
-          this.state.removeSession(parsed.previousSessionId);
-        }
-        this.state.markCodexSessionSeen(parsed.sessionId, parsed.cwd);
-        if (parsed.markWorking) {
-          this.state.handleCodexActivity({
-            sessionId: parsed.sessionId,
-            cwd: parsed.cwd,
-          });
-        }
-        if (parsed.markIdle) {
-          this.state.setCodexIdle(parsed.sessionId, parsed.cwd);
-        }
+      this.processLines(newLines, fileState);
+    }
+  }
+
+  private processLines(lines: string[], fileState: FileState): void {
+    for (const line of lines) {
+      const parsed = parseCodexLine(line, fileState.sessionId);
+      fileState.sessionId = parsed.sessionId;
+      if (parsed.previousSessionId) {
+        this.state.removeSession(parsed.previousSessionId);
+      }
+      this.state.markCodexSessionSeen(parsed.sessionId, parsed.cwd);
+      if (parsed.markWorking) {
+        this.state.handleCodexActivity({
+          sessionId: parsed.sessionId,
+          cwd: parsed.cwd,
+        });
+      }
+      if (parsed.markIdle) {
+        this.state.setCodexIdle(parsed.sessionId, parsed.cwd);
       }
     }
   }
