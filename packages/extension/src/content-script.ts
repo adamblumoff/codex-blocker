@@ -1,7 +1,7 @@
 import { applyOverrides } from "./lib/blocking.js";
 import { DEFAULT_DOMAINS } from "./lib/domains.js";
 import { getPhrasesForMode } from "./lib/phrases.js";
-import { startPhraseRotation } from "./lib/phrase-rotation.js";
+import { startRandomPhraseRotation } from "./lib/phrase-rotation.js";
 
 export {};
 
@@ -37,7 +37,6 @@ const pausedMedia = new Set<HTMLMediaElement>();
 const pendingResume = new Set<HTMLMediaElement>();
 let resumeListenerAttached = false;
 let stopHeadlineRotation: (() => void) | null = null;
-let rotationStartAtPromise: Promise<number> | null = null;
 
 // Load domains from storage
 function loadDomains(): Promise<string[]> {
@@ -141,12 +140,12 @@ function createModal(): void {
 
   // Mount to documentElement (html) instead of body - more resilient to React hydration
   document.documentElement.appendChild(container);
-  Promise.all([getRotationStartAt(), getRoastMode()]).then(([startAt, roastMode]) => {
+  Promise.all([getRoastMode(), getPhraseSeed()]).then(([roastMode, seed]) => {
     if (!getModal()) return;
     stopHeadlineRotation = startHeadlineRotation(
       shadow,
-      startAt,
       getPhrasesForMode(roastMode),
+      seed,
     );
   });
 }
@@ -203,10 +202,22 @@ function getRoastMode(): Promise<boolean> {
   });
 }
 
+function getPhraseSeed(): Promise<number> {
+  return new Promise((resolve) => {
+    chrome.runtime.sendMessage({ type: "GET_PHRASE_SEED" }, (response) => {
+      if (chrome.runtime.lastError || typeof response?.seed !== "number") {
+        resolve(Date.now() & 0xffffffff);
+        return;
+      }
+      resolve(response.seed);
+    });
+  });
+}
+
 function startHeadlineRotation(
   shadow: ShadowRoot,
-  startAtMs: number,
   phrases: string[],
+  seed: number,
 ): () => void {
   const headline = shadow.getElementById("headline");
   if (!headline) return () => {};
@@ -218,28 +229,12 @@ function startHeadlineRotation(
     headline.classList.add("codex-phrase-animate");
   };
 
-  return startPhraseRotation({
+  return startRandomPhraseRotation({
     phrases,
     intervalMs: PHRASE_ROTATION_MS,
     onPhrase: setPhrase,
-    startAtMs,
+    seed,
   });
-}
-
-function getRotationStartAt(): Promise<number> {
-  if (rotationStartAtPromise) return rotationStartAtPromise;
-  rotationStartAtPromise = new Promise((resolve) => {
-    chrome.runtime.sendMessage({ type: "GET_ROTATION_START" }, (response) => {
-      const fallback = Date.now();
-      if (chrome.runtime.lastError) {
-        resolve(fallback);
-        return;
-      }
-      const startAt = response?.startAt;
-      resolve(typeof startAt === "number" ? startAt : fallback);
-    });
-  });
-  return rotationStartAtPromise;
 }
 
 function pauseMediaElement(element: HTMLMediaElement): void {
@@ -502,12 +497,12 @@ chrome.storage.onChanged.addListener((changes, area) => {
   const shadow = getShadow();
   if (!shadow) return;
   stopHeadlineRotationIfNeeded();
-  getRotationStartAt().then((startAt) => {
-    if (!getModal()) return;
+  if (!getModal()) return;
+  getPhraseSeed().then((seed) => {
     stopHeadlineRotation = startHeadlineRotation(
       shadow,
-      startAt,
       getPhrasesForMode(roastMode),
+      seed,
     );
   });
 });

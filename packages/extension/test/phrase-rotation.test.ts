@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { startPhraseRotation } from "../src/lib/phrase-rotation.js";
+import { startPhraseRotation, startRandomPhraseRotation } from "../src/lib/phrase-rotation.js";
 
 describe("startPhraseRotation", () => {
   const originalWindow = globalThis.window;
@@ -79,5 +79,63 @@ describe("startPhraseRotation", () => {
     expect(onPhrase).not.toHaveBeenCalled();
     expect(setIntervalSpy).not.toHaveBeenCalled();
     expect(setTimeoutSpy).not.toHaveBeenCalled();
+  });
+});
+
+describe("startRandomPhraseRotation", () => {
+  const originalWindow = globalThis.window;
+
+  afterEach(() => {
+    globalThis.window = originalWindow;
+  });
+
+  it("avoids repeating the last phrase when possible", () => {
+    const onPhrase = vi.fn();
+    let timeoutCallback: (() => void) | null = null;
+    let intervalCallback: (() => void) | null = null;
+    const setIntervalSpy = vi.fn((callback: () => void) => {
+      intervalCallback = callback;
+      return 7 as unknown as number;
+    });
+    const clearIntervalSpy = vi.fn();
+    const setTimeoutSpy = vi.fn((callback: () => void) => {
+      timeoutCallback = callback;
+      return 8 as unknown as number;
+    });
+    const clearTimeoutSpy = vi.fn();
+    let now = 0;
+
+    globalThis.window = {
+      setInterval: setIntervalSpy,
+      clearInterval: clearIntervalSpy,
+      setTimeout: setTimeoutSpy,
+      clearTimeout: clearTimeoutSpy,
+    } as Window;
+
+    const stop = startRandomPhraseRotation({
+      phrases: ["One", "Two", "Three"],
+      intervalMs: 1000,
+      onPhrase,
+      seed: 123,
+      now: () => now,
+    });
+
+    expect(onPhrase).toHaveBeenCalledTimes(1);
+    const first = onPhrase.mock.calls[0]?.[0];
+
+    now = 1000;
+    timeoutCallback?.();
+    const second = onPhrase.mock.calls[1]?.[0];
+
+    now = 2000;
+    intervalCallback?.();
+    const third = onPhrase.mock.calls[2]?.[0];
+
+    expect(second).not.toBe(first);
+    expect(third).not.toBe(second);
+
+    stop();
+    expect(clearIntervalSpy).toHaveBeenCalledWith(7);
+    expect(clearTimeoutSpy).toHaveBeenCalledWith(8);
   });
 });

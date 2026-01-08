@@ -7,7 +7,7 @@ const KEEPALIVE_INTERVAL = 20_000;
 const RECONNECT_BASE_DELAY = 1_000;
 const RECONNECT_MAX_DELAY = 30_000;
 const TOKEN_STORAGE_KEY = "authToken";
-const ROTATION_START_KEY = "rotationStartAt";
+const PHRASE_SEED_KEY = "phraseSeed";
 const DISCONNECT_GRACE_MS = 10_000;
 
 // The actual state - service worker is single source of truth
@@ -40,7 +40,8 @@ let keepaliveInterval: ReturnType<typeof setInterval> | null = null;
 let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 let retryCount = 0;
 let authToken: string | null = null;
-let rotationStartAt: number | null = null;
+let phraseSeed: number | null = null;
+let phraseSeedPromise: Promise<number> | null = null;
 let lastDisconnectAt: number | null = null;
 const statePorts = new Set<chrome.runtime.Port>();
 
@@ -65,25 +66,6 @@ chrome.storage.sync.get(
   broadcast();
 });
 
-function ensureRotationStartAt(resolve: (startAt: number) => void): void {
-  if (rotationStartAt) {
-    resolve(rotationStartAt);
-    return;
-  }
-
-  chrome.storage.local.get([ROTATION_START_KEY], (result) => {
-    const stored = result[ROTATION_START_KEY];
-    if (typeof stored === "number") {
-      rotationStartAt = stored;
-      resolve(stored);
-      return;
-    }
-
-    const now = Date.now();
-    rotationStartAt = now;
-    chrome.storage.local.set({ [ROTATION_START_KEY]: now }, () => resolve(now));
-  });
-}
 
 function generateToken(): string {
   const bytes = new Uint8Array(32);
@@ -102,6 +84,34 @@ function ensureToken(): Promise<string> {
       chrome.storage.local.set({ [TOKEN_STORAGE_KEY]: token }, () => resolve(token));
     });
   });
+}
+
+function ensurePhraseSeed(): Promise<number> {
+  if (phraseSeed !== null) return Promise.resolve(phraseSeed);
+  if (phraseSeedPromise) return phraseSeedPromise;
+
+  phraseSeedPromise = new Promise((resolve) => {
+    chrome.storage.local.get([PHRASE_SEED_KEY], (result) => {
+      const stored = result[PHRASE_SEED_KEY];
+      if (typeof stored === "number") {
+        phraseSeed = stored;
+        phraseSeedPromise = null;
+        resolve(stored);
+        return;
+      }
+
+      const bytes = new Uint32Array(1);
+      crypto.getRandomValues(bytes);
+      const seed = bytes[0] ?? Date.now();
+      phraseSeed = seed;
+      chrome.storage.local.set({ [PHRASE_SEED_KEY]: seed }, () => {
+        phraseSeedPromise = null;
+        resolve(seed);
+      });
+    });
+  });
+
+  return phraseSeedPromise;
 }
 
 function buildWsUrl(): string {
@@ -298,8 +308,8 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     return true;
   }
 
-  if (message.type === "GET_ROTATION_START") {
-    ensureRotationStartAt((startAt) => sendResponse({ startAt }));
+  if (message.type === "GET_PHRASE_SEED") {
+    ensurePhraseSeed().then((seed) => sendResponse({ seed }));
     return true;
   }
 
