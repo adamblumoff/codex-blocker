@@ -1,0 +1,100 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          registry-url: https://registry.npmjs.org
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Verify versions match tag
+        run: |
+          tag="${GITHUB_REF#refs/tags/v}"
+          server_version="$(node -p "require('./packages/server/package.json').version")"
+          extension_version="$(node -p "require('./packages/extension/manifest.json').version")"
+          if [ "$server_version" != "$tag" ]; then
+            echo "Server version $server_version does not match tag $tag"
+            exit 1
+          fi
+          if [ "$extension_version" != "$tag" ]; then
+            echo "Extension version $extension_version does not match tag $tag"
+            exit 1
+          fi
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build server
+        run: pnpm --filter codex-blocker build
+
+      - name: Build extension
+        run: pnpm --filter @codex-blocker/extension build
+
+      - name: Zip extension
+        run: pnpm --filter @codex-blocker/extension zip
+
+      - name: Publish npm package
+        run: npm publish
+        working-directory: packages/server
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Resolve release notes
+        id: notes
+        run: |
+          tag="${GITHUB_REF#refs/tags/v}"
+          notes_file="docs/release${tag}.md"
+          if [[ "$tag" == *"-alpha"* ]]; then
+            if [ -f "$notes_file" ]; then
+              echo "body_path=$notes_file" >> "$GITHUB_OUTPUT"
+              echo "has_body=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "has_body=false" >> "$GITHUB_OUTPUT"
+            fi
+            exit 0
+          fi
+
+          if [ ! -f "$notes_file" ]; then
+            echo "Missing release notes: $notes_file"
+            exit 1
+          fi
+
+          echo "body_path=$notes_file" >> "$GITHUB_OUTPUT"
+          echo "has_body=true" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub release (notes file)
+        if: steps.notes.outputs.has_body == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: packages/extension/codex-blocker.zip
+          body_path: ${{ steps.notes.outputs.body_path }}
+
+      - name: Create GitHub release (auto notes)
+        if: steps.notes.outputs.has_body != 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: packages/extension/codex-blocker.zip
+          generate_release_notes: true
