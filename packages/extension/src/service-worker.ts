@@ -8,6 +8,7 @@ const RECONNECT_BASE_DELAY = 1_000;
 const RECONNECT_MAX_DELAY = 30_000;
 const TOKEN_STORAGE_KEY = "authToken";
 const ROTATION_START_KEY = "rotationStartAt";
+const DISCONNECT_GRACE_MS = 10_000;
 
 // The actual state - service worker is single source of truth
 interface State {
@@ -40,6 +41,7 @@ let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
 let retryCount = 0;
 let authToken: string | null = null;
 let rotationStartAt: number | null = null;
+let lastDisconnectAt: number | null = null;
 const statePorts = new Set<chrome.runtime.Port>();
 
 // Load bypass from storage on startup
@@ -109,10 +111,16 @@ function buildWsUrl(): string {
 // Compute derived state
 function getPublicState() {
   const bypassActive = state.bypassUntil !== null && state.bypassUntil > Date.now();
+  const now = Date.now();
+  const withinGrace =
+    !state.serverConnected &&
+    lastDisconnectAt !== null &&
+    now - lastDisconnectAt < DISCONNECT_GRACE_MS;
+  const serverConnected = state.serverConnected || withinGrace;
   // Safety default: block when server is offline, or when an active session is idle.
   const shouldBlock = computeShouldBlock({
     bypassActive,
-    serverConnected: state.serverConnected,
+    serverConnected,
     sessions: state.sessions,
     working: state.working,
     waitingForInput: state.waitingForInput,
@@ -160,6 +168,7 @@ async function connect() {
     websocket.onopen = () => {
       console.log("[Codex Blocker] Connected");
       state.serverConnected = true;
+      lastDisconnectAt = null;
       retryCount = 0;
       startKeepalive();
       broadcast();
@@ -178,8 +187,8 @@ async function connect() {
     };
 
     websocket.onclose = () => {
-      console.log("[Codex Blocker] Disconnected");
       state.serverConnected = false;
+      lastDisconnectAt = Date.now();
       stopKeepalive();
       broadcast();
       scheduleReconnect();
@@ -187,6 +196,7 @@ async function connect() {
 
     websocket.onerror = () => {
       state.serverConnected = false;
+      lastDisconnectAt = Date.now();
       stopKeepalive();
     };
   } catch {
