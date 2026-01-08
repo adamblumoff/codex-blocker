@@ -97,12 +97,26 @@ jobs:
           echo "body_path=$notes_file" >> "$GITHUB_OUTPUT"
           echo "has_body=true" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve release flags
+        id: rel_flags
+        run: |
+          tag="${GITHUB_REF#refs/tags/v}"
+          if [[ "$tag" == *"-alpha"* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+            echo "make_latest=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+            echo "make_latest=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Create GitHub release (notes file)
         if: steps.notes.outputs.has_body == 'true'
         uses: softprops/action-gh-release@v2
         with:
           files: packages/extension/codex-blocker.zip
           body_path: ${{ steps.notes.outputs.body_path }}
+          prerelease: ${{ steps.rel_flags.outputs.prerelease }}
+          make_latest: ${{ steps.rel_flags.outputs.make_latest }}
 
       - name: Create GitHub release (auto notes)
         if: steps.notes.outputs.has_body != 'true'
@@ -110,3 +124,5 @@ jobs:
         with:
           files: packages/extension/codex-blocker.zip
           generate_release_notes: true
+          prerelease: ${{ steps.rel_flags.outputs.prerelease }}
+          make_latest: ${{ steps.rel_flags.outputs.make_latest }}
