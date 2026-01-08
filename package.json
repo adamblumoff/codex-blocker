@@ -19,6 +19,6 @@
   },
   "version": "",
   "dependencies": {
-    "codex-blocker": "^0.0.4"
+    "codex-blocker": "^0.0.10"
   }
 }

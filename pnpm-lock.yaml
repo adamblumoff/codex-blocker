@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       codex-blocker:
-        specifier: ^0.0.4
-        version: 0.0.4
+        specifier: ^0.0.10
+        version: 0.0.10
     devDependencies:
       '@vitest/coverage-v8':
         specifier: ^2.1.6
@@ -771,8 +771,8 @@ packages:
     resolution: {integrity: sha512-Qgzu8kfBvo+cA4962jnP1KkS6Dop5NS6g7R5LFYJr4b8Ub94PPQXUksCw9PvXoeXPRRddRNC5C1JQUR2SMGtnA==}
     engines: {node: '>= 14.16.0'}
 
-  codex-blocker@0.0.4:
-    resolution: {integrity: sha512-XZrICK5miFbMhHID5F7d4lvxMwRuYCgd33AaTSPN9cWvcA8mCKskuYnKjByx7L69IE8Y1PINQj/IDGRe19C1KQ==}
+  codex-blocker@0.0.10:
+    resolution: {integrity: sha512-SvcF+6Yh5+tJVF8TMnqDgv13R+1dtgKtddumxQAtvh5XEME12eU01u+u3fdZ8kAkcBIjcr/vVZvNPpYrMvmUDA==}
     engines: {node: '>=18.0.0'}
     hasBin: true
 
@@ -1755,7 +1755,7 @@ snapshots:
     dependencies:
       readdirp: 4.1.2
 
-  codex-blocker@0.0.4:
+  codex-blocker@0.0.10:
     dependencies:
       ws: 8.18.3
     transitivePeerDependencies:

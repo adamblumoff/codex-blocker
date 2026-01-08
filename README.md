@@ -65,6 +65,9 @@ npx codex-blocker --setup
 
 # Show help
 npx codex-blocker --help
+
+# Show version
+npx codex-blocker --version
 ```
 
 ## Features

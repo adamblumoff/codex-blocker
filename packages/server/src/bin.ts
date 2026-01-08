@@ -1,9 +1,13 @@
 #!/usr/bin/env node
 
+import { createRequire } from "module";
 import { createInterface } from "readline";
 import { startServer } from "./server.js";
 import { setupCodex, removeCodexSetup, isCodexAvailable } from "./setup.js";
 import { DEFAULT_PORT } from "./types.js";
+
+const require = createRequire(import.meta.url);
+const { version } = require("../package.json") as { version?: string };
 
 const args = process.argv.slice(2);
 
@@ -32,6 +36,7 @@ Options:
   --setup     Show Codex setup info
   --remove    Remove Codex setup (no-op)
   --port      Server port (default: ${DEFAULT_PORT})
+  --version   Show version
   --help      Show this help message
 
 Examples:
@@ -43,6 +48,11 @@ Examples:
 async function main(): Promise<void> {
   if (args.includes("--help") || args.includes("-h")) {
     printHelp();
+    process.exit(0);
+  }
+
+  if (args.includes("--version") || args.includes("-v")) {
+    console.log(version ?? "unknown");
     process.exit(0);
   }
 

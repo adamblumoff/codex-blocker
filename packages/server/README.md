@@ -34,6 +34,9 @@ npx codex-blocker --remove
 
 # Show help
 npx codex-blocker --help
+
+# Show version
+npx codex-blocker --version
 ```
 
 ## How It Works
