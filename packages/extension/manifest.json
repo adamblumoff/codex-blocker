@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Codex Blocker",
-  "version": "0.0.10-alpha.2",
+  "version": "0.0.10-alpha.3",
   "description": "Block distracting websites unless Codex is actively running inference",
   "homepage_url": "https://github.com/adamblumoff/codex-blocker",
   "minimum_chrome_version": "116",
