@@ -43,8 +43,8 @@ describe("options page", () => {
     globalThis.chrome = {
       runtime: {
         getManifest: () => ({
-          version: "0.0.10.4",
-          version_name: "0.0.10-alpha.4",
+          version: "0.1.0",
+          version_name: "0.1.0",
         }),
         sendMessage: (message: any, callback?: (response?: any) => void) => {
           if (message.type === "GET_STATE") {

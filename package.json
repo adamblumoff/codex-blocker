@@ -20,6 +20,6 @@
   },
   "version": "",
   "dependencies": {
-    "codex-blocker": "^0.0.10"
+    "codex-blocker": "workspace:0.1.0"
   }
 }
