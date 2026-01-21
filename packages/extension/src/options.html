@@ -79,30 +79,6 @@
           </div>
         </section>
 
-        <section class="tone-section">
-          <div class="section-header">
-            <div class="section-title">
-              <h2>Tone</h2>
-              <p class="section-desc">Choose how the blocker talks to you</p>
-              <p class="section-note">
-                Want different roast phrases? Submit an issue at
-                <a
-                  href="https://github.com/adamblumoff/codex-blocker/issues"
-                  target="_blank"
-                  rel="noreferrer"
-                >github.com/adamblumoff/codex-blocker/issues</a>.
-              </p>
-            </div>
-          </div>
-          <div class="toggle-row">
-            <span class="toggle-label">Roast mode</span>
-            <label class="switch">
-              <input type="checkbox" id="roast-toggle" />
-              <span class="slider"></span>
-            </label>
-          </div>
-        </section>
-
         <!-- Blocked Sites Section -->
         <section class="sites-section">
           <div class="section-header">
@@ -157,6 +133,55 @@
             <span id="bypass-text">Activate Bypass</span>
           </button>
           <p class="bypass-status" id="bypass-status">Loading...</p>
+        </section>
+
+        <section class="tone-section">
+          <div class="section-header">
+            <div class="section-title">
+              <h2>Tone</h2>
+              <p class="section-desc">Choose how the blocker talks to you</p>
+              <p class="section-note">
+                Customize the phrases below. Changes go live after you save.
+              </p>
+            </div>
+          </div>
+          <div class="toggle-row">
+            <span class="toggle-label">Roast mode</span>
+            <label class="switch">
+              <input type="checkbox" id="roast-toggle" />
+              <span class="slider"></span>
+            </label>
+          </div>
+
+          <div class="phrase-editor">
+            <div class="phrase-editor-header">
+              <div>
+                <h3>Focus phrases</h3>
+                <p class="section-desc small">Shown in regular mode.</p>
+              </div>
+              <div class="phrase-editor-actions">
+                <button class="ghost-btn" id="base-phrase-add" type="button">Add phrase</button>
+                <button class="primary-btn" id="base-phrase-save" type="button" disabled>Save</button>
+              </div>
+            </div>
+            <div class="phrase-list" id="base-phrase-list"></div>
+            <p class="phrase-help" id="base-phrase-help">Add at least 1 phrase to save.</p>
+          </div>
+
+          <div class="phrase-editor">
+            <div class="phrase-editor-header">
+              <div>
+                <h3>Roast phrases</h3>
+                <p class="section-desc small">Shown when roast mode is on.</p>
+              </div>
+              <div class="phrase-editor-actions">
+                <button class="ghost-btn" id="roast-phrase-add" type="button">Add phrase</button>
+                <button class="primary-btn" id="roast-phrase-save" type="button" disabled>Save</button>
+              </div>
+            </div>
+            <div class="phrase-list" id="roast-phrase-list"></div>
+            <p class="phrase-help" id="roast-phrase-help">Add at least 1 phrase to save.</p>
+          </div>
         </section>
       </main>
 

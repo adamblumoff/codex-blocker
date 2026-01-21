@@ -90,6 +90,18 @@ export function parseCodexLine(line: string, sessionId: string): ParsedCodexLine
     if (entryType === "event_msg" && innerTypeString === "agent_message") {
       markIdle = true;
     }
+    if (entryType === "response_item" && innerTypeString === "message") {
+      const role =
+        innerPayload && typeof innerPayload === "object"
+          ? (innerPayload as Record<string, unknown>).role
+          : undefined;
+      if (role === "user") {
+        const messageText = extractMessageText(innerPayload);
+        if (!messageText || !messageText.trim().startsWith("<environment_context>")) {
+          markWorking = true;
+        }
+      }
+    }
   } catch {
     // Ignore malformed lines
   }
@@ -101,4 +113,19 @@ export function parseCodexLine(line: string, sessionId: string): ParsedCodexLine
     markWorking,
     markIdle,
   };
+}
+
+function extractMessageText(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== "object") return undefined;
+  const record = payload as Record<string, unknown>;
+  const content = record.content;
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return undefined;
+  const parts: string[] = [];
+  for (const item of content) {
+    if (!item || typeof item !== "object") continue;
+    const text = (item as Record<string, unknown>).text;
+    if (typeof text === "string") parts.push(text);
+  }
+  return parts.length > 0 ? parts.join("\n") : undefined;
 }

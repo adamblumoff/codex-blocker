@@ -35,6 +35,14 @@ describe("options page", () => {
       <input id="pause-media-toggle" type="checkbox" />
       <input id="force-block-toggle" type="checkbox" />
       <input id="roast-toggle" type="checkbox" />
+      <div id="base-phrase-list"></div>
+      <div id="roast-phrase-list"></div>
+      <button id="base-phrase-add"></button>
+      <button id="roast-phrase-add"></button>
+      <button id="base-phrase-save"></button>
+      <button id="roast-phrase-save"></button>
+      <p id="base-phrase-help"></p>
+      <p id="roast-phrase-help"></p>
     `;
 
     let stateCall = 0;
@@ -43,8 +51,8 @@ describe("options page", () => {
     globalThis.chrome = {
       runtime: {
         getManifest: () => ({
-          version: "0.1.0",
-          version_name: "0.1.0",
+          version: "0.1.1",
+          version_name: "0.1.1",
         }),
         sendMessage: (message: any, callback?: (response?: any) => void) => {
           if (message.type === "GET_STATE") {

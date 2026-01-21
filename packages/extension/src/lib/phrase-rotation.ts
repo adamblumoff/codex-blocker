@@ -61,6 +61,10 @@ export function startRandomPhraseRotation(
   if (!phrases.length || intervalMs <= 0) {
     return () => {};
   }
+  if (phrases.length === 1) {
+    onPhrase(phrases[0]!);
+    return () => {};
+  }
 
   const nowFn = now ?? (() => Date.now());
   let intervalId: number | null = null;

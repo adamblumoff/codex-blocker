@@ -138,4 +138,30 @@ describe("startRandomPhraseRotation", () => {
     expect(clearIntervalSpy).toHaveBeenCalledWith(7);
     expect(clearTimeoutSpy).toHaveBeenCalledWith(8);
   });
+
+  it("no-ops for a single phrase", () => {
+    const onPhrase = vi.fn();
+    const setIntervalSpy = vi.fn();
+    const setTimeoutSpy = vi.fn();
+
+    globalThis.window = {
+      setInterval: setIntervalSpy,
+      clearInterval: vi.fn(),
+      setTimeout: setTimeoutSpy,
+      clearTimeout: vi.fn(),
+    } as Window;
+
+    const stop = startRandomPhraseRotation({
+      phrases: ["Only"],
+      intervalMs: 1000,
+      onPhrase,
+      seed: 123,
+    });
+
+    stop();
+    expect(onPhrase).toHaveBeenCalledTimes(1);
+    expect(onPhrase).toHaveBeenLastCalledWith("Only");
+    expect(setIntervalSpy).not.toHaveBeenCalled();
+    expect(setTimeoutSpy).not.toHaveBeenCalled();
+  });
 });
