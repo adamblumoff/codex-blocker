@@ -1,4 +1,10 @@
 import { DEFAULT_DOMAINS, isValidDomain, normalizeDomain } from "./lib/domains.js";
+import {
+  loadStoredPhrases,
+  PHRASE_STORAGE_KEYS,
+  type PhraseSet,
+  sanitizePhrases,
+} from "./lib/phrase-storage.js";
 
 export {};
 
@@ -38,9 +44,50 @@ const enabledToggle = document.getElementById("enabled-toggle") as HTMLInputElem
 const pauseMediaToggle = document.getElementById("pause-media-toggle") as HTMLInputElement;
 const forceBlockToggle = document.getElementById("force-block-toggle") as HTMLInputElement;
 const roastToggle = document.getElementById("roast-toggle") as HTMLInputElement;
+const basePhraseList = document.getElementById("base-phrase-list") as HTMLElement;
+const roastPhraseList = document.getElementById("roast-phrase-list") as HTMLElement;
+const basePhraseAdd = document.getElementById("base-phrase-add") as HTMLButtonElement;
+const roastPhraseAdd = document.getElementById("roast-phrase-add") as HTMLButtonElement;
+const basePhraseSave = document.getElementById("base-phrase-save") as HTMLButtonElement;
+const roastPhraseSave = document.getElementById("roast-phrase-save") as HTMLButtonElement;
+const basePhraseHelp = document.getElementById("base-phrase-help") as HTMLElement;
+const roastPhraseHelp = document.getElementById("roast-phrase-help") as HTMLElement;
 
 let bypassCountdown: ReturnType<typeof setInterval> | null = null;
 let currentDomains: string[] = [];
+
+type PhraseKind = "base" | "roast";
+
+type PhraseEditor = {
+  kind: PhraseKind;
+  listEl: HTMLElement;
+  addBtn: HTMLButtonElement;
+  saveBtn: HTMLButtonElement;
+  helpEl: HTMLElement;
+  phrases: string[];
+  dirty: boolean;
+};
+
+const phraseEditors: Record<PhraseKind, PhraseEditor> = {
+  base: {
+    kind: "base",
+    listEl: basePhraseList,
+    addBtn: basePhraseAdd,
+    saveBtn: basePhraseSave,
+    helpEl: basePhraseHelp,
+    phrases: [],
+    dirty: false,
+  },
+  roast: {
+    kind: "roast",
+    listEl: roastPhraseList,
+    addBtn: roastPhraseAdd,
+    saveBtn: roastPhraseSave,
+    helpEl: roastPhraseHelp,
+    phrases: [],
+    dirty: false,
+  },
+};
 
 // Load domains from storage
 async function loadDomains(): Promise<string[]> {
@@ -63,6 +110,114 @@ async function saveDomains(domains: string[]): Promise<void> {
       chrome.runtime.sendMessage({ type: "DOMAINS_UPDATED", domains }).catch(() => {});
       resolve();
     });
+  });
+}
+
+function ensurePhraseMinimum(editor: PhraseEditor): void {
+  if (editor.phrases.length === 0) {
+    editor.phrases.push("");
+  }
+}
+
+function resizeTextarea(textarea: HTMLTextAreaElement): void {
+  textarea.style.height = "auto";
+  textarea.style.height = `${textarea.scrollHeight}px`;
+}
+
+function updatePhraseEditorState(editor: PhraseEditor): void {
+  const sanitized = sanitizePhrases(editor.phrases);
+  const valid = sanitized.length > 0;
+  editor.saveBtn.disabled = !editor.dirty || !valid;
+  editor.helpEl.classList.toggle("error", !valid);
+  editor.helpEl.textContent = valid
+    ? "Changes go live after you save."
+    : "Add at least 1 phrase to save.";
+}
+
+function renderPhraseEditor(editor: PhraseEditor): void {
+  editor.listEl.innerHTML = "";
+  ensurePhraseMinimum(editor);
+
+  editor.phrases.forEach((phrase, index) => {
+    const row = document.createElement("div");
+    row.className = "phrase-row";
+
+    const textarea = document.createElement("textarea");
+    textarea.className = "phrase-input";
+    textarea.rows = 1;
+    textarea.placeholder = "Type a phrase...";
+    textarea.value = phrase;
+    textarea.addEventListener("input", () => {
+      editor.phrases[index] = textarea.value;
+      editor.dirty = true;
+      resizeTextarea(textarea);
+      updatePhraseEditorState(editor);
+    });
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "icon-btn";
+    removeBtn.title = "Remove phrase";
+    removeBtn.innerHTML = `
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="18" y1="6" x2="6" y2="18"/>
+        <line x1="6" y1="6" x2="18" y2="18"/>
+      </svg>
+    `;
+    removeBtn.addEventListener("click", () => {
+      editor.phrases.splice(index, 1);
+      editor.dirty = true;
+      renderPhraseEditor(editor);
+    });
+
+    row.appendChild(textarea);
+    row.appendChild(removeBtn);
+    editor.listEl.appendChild(row);
+    resizeTextarea(textarea);
+  });
+
+  updatePhraseEditorState(editor);
+}
+
+function syncPhraseEditors(phrases: PhraseSet, force = false): void {
+  const sets: Record<PhraseKind, string[]> = {
+    base: phrases.base,
+    roast: phrases.roast,
+  };
+
+  (Object.keys(phraseEditors) as PhraseKind[]).forEach((kind) => {
+    const editor = phraseEditors[kind];
+    if (!force && editor.dirty) return;
+    editor.phrases = [...sets[kind]];
+    editor.dirty = false;
+    renderPhraseEditor(editor);
+  });
+}
+
+function addPhrase(kind: PhraseKind): void {
+  const editor = phraseEditors[kind];
+  editor.phrases.push("");
+  editor.dirty = true;
+  renderPhraseEditor(editor);
+}
+
+function savePhraseEditor(kind: PhraseKind): void {
+  const editor = phraseEditors[kind];
+  const sanitized = sanitizePhrases(editor.phrases);
+  updatePhraseEditorState(editor);
+  if (sanitized.length === 0) return;
+
+  editor.saveBtn.disabled = true;
+  const key = PHRASE_STORAGE_KEYS[kind];
+  chrome.storage.sync.set({ [key]: sanitized }, () => {
+    if (chrome.runtime.lastError) {
+      editor.saveBtn.disabled = false;
+      updatePhraseEditorState(editor);
+      return;
+    }
+    editor.phrases = [...sanitized];
+    editor.dirty = false;
+    renderPhraseEditor(editor);
   });
 }
 
@@ -238,6 +393,16 @@ function refreshRoastMode(): void {
   });
 }
 
+async function initPhraseEditors(): Promise<void> {
+  const phrases = await loadStoredPhrases();
+  syncPhraseEditors(phrases, true);
+
+  phraseEditors.base.addBtn.addEventListener("click", () => addPhrase("base"));
+  phraseEditors.roast.addBtn.addEventListener("click", () => addPhrase("roast"));
+  phraseEditors.base.saveBtn.addEventListener("click", () => savePhraseEditor("base"));
+  phraseEditors.roast.saveBtn.addEventListener("click", () => savePhraseEditor("roast"));
+}
+
 // Event listeners
 addForm.addEventListener("submit", (e) => {
   e.preventDefault();
@@ -306,8 +471,12 @@ chrome.runtime.onMessage.addListener((message) => {
 });
 
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === "sync" && changes.roastMode) {
+  if (area !== "sync") return;
+  if (changes.roastMode) {
     roastToggle.checked = Boolean(changes.roastMode.newValue);
+  }
+  if (changes.basePhrases || changes.roastPhrases) {
+    loadStoredPhrases().then((phrases) => syncPhraseEditors(phrases));
   }
 });
 
@@ -322,6 +491,7 @@ async function init(): Promise<void> {
   renderDomains();
   refreshState();
   refreshRoastMode();
+  await initPhraseEditors();
 }
 
 init();

@@ -9,7 +9,7 @@ importers:
   .:
     dependencies:
       codex-blocker:
-        specifier: workspace:0.1.0
+        specifier: workspace:0.1.1
         version: link:packages/server
     devDependencies:
       '@vitest/coverage-v8':

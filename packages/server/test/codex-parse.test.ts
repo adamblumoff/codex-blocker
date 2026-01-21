@@ -46,6 +46,36 @@ describe("codex parsing helpers", () => {
     expect(agentParsed.markIdle).toBe(true);
   });
 
+  it("treats response_item user messages as working activity", () => {
+    const userLine = JSON.stringify({
+      type: "response_item",
+      payload: {
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "run this command, go ahead" }],
+      },
+    });
+    const parsed = parseCodexLine(userLine, "session-a");
+    expect(parsed.markWorking).toBe(true);
+    expect(parsed.markIdle).toBe(false);
+  });
+
+  it("ignores environment context response_item messages", () => {
+    const envLine = JSON.stringify({
+      type: "response_item",
+      payload: {
+        type: "message",
+        role: "user",
+        content: [
+          { type: "input_text", text: "<environment_context>\n  <cwd>/tmp</cwd>\n</environment_context>" },
+        ],
+      },
+    });
+    const parsed = parseCodexLine(envLine, "session-a");
+    expect(parsed.markWorking).toBe(false);
+    expect(parsed.markIdle).toBe(false);
+  });
+
   it("parses session id changes", () => {
     const line = JSON.stringify({
       type: "session_meta",
