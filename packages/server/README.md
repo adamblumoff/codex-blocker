@@ -42,8 +42,10 @@ npx codex-blocker --version
 ## How It Works
 
 1. **Codex sessions** — The server tails Codex session logs under `~/.codex/sessions`
-   to detect activity. It marks a session “working” on your prompt and “idle” on the
-   final assistant reply (tool calls don’t count as idle).
+   to detect activity. It marks a session “working” on your prompt and on intermediate
+   assistant/tool activity, marks `waiting_for_input` when Codex emits
+   `request_user_input`, and marks “idle” when it sees a terminal assistant reply
+   (`phase: "final_answer"`), with legacy fallback support for older Codex logs.
 
 2. **Server** — Runs on localhost and:
    - Tracks active Codex sessions
@@ -51,7 +53,7 @@ npx codex-blocker --version
    - Broadcasts state via WebSocket to the Chrome extension
 
 3. **Extension** — Connects to the server and:
-   - Blocks configured sites when no sessions are working
+   - Blocks configured sites when no sessions are working, or when any session is waiting for user input
    - Shows a modal overlay (soft block, not network block)
    - Updates in real-time without page refresh
 
@@ -72,7 +74,8 @@ Connect to `ws://localhost:8765/ws` to receive real-time state updates:
   "type": "state",
   "blocked": true,
   "sessions": 1,
-  "working": 0
+  "working": 0,
+  "waitingForInput": 1
 }
 ```
 

@@ -127,7 +127,8 @@ function getPublicState() {
     lastDisconnectAt !== null &&
     now - lastDisconnectAt < DISCONNECT_GRACE_MS;
   const serverConnected = state.serverConnected || withinGrace;
-  // Safety default: block when server is offline, or when an active session is idle.
+  // Safety default: block when server is offline, when Codex is waiting for input,
+  // or when active sessions are idle.
   const shouldBlock = computeShouldBlock({
     bypassActive,
     serverConnected,

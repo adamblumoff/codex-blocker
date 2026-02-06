@@ -137,7 +137,7 @@ describe("content-script", () => {
     delete (globalThis as { chrome?: unknown }).chrome;
   });
 
-  it("renders modal, toast, and reacts to state updates", async () => {
+  it("renders modal-only waiting state and reacts to state updates", async () => {
     await import("../src/content-script.js");
 
     expect(document.getElementById("codex-blocker-modal")).not.toBeNull();
@@ -156,7 +156,12 @@ describe("content-script", () => {
     });
 
     expect(document.getElementById("codex-blocker-modal")).not.toBeNull();
-    expect(document.getElementById("codex-blocker-toast")).not.toBeNull();
+    expect(document.getElementById("codex-blocker-toast")).toBeNull();
+    const waitingModal = document.getElementById("codex-blocker-modal") as HTMLElement;
+    const waitingMessage = waitingModal.shadowRoot?.getElementById("message");
+    const waitingStatus = waitingModal.shadowRoot?.getElementById("status");
+    expect(waitingMessage?.textContent).toBe("Codex is waiting for your input.");
+    expect(waitingStatus?.textContent).toBe("Action Needed in Codex");
 
     const modal = document.getElementById("codex-blocker-modal") as HTMLElement;
     const bypassBtn = modal.shadowRoot?.getElementById("bypass-btn") as HTMLButtonElement;

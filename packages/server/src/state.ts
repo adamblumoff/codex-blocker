@@ -37,7 +37,7 @@ export class SessionState {
     ).length;
     return {
       type: "state",
-      blocked: working === 0,
+      blocked: waitingForInput > 0 || working === 0,
       sessions: sessions.length,
       working,
       waitingForInput,
@@ -47,12 +47,15 @@ export class SessionState {
   handleCodexActivity(activity: CodexActivity): void {
     this.ensureSession(activity.sessionId, activity.cwd);
     const session = this.sessions.get(activity.sessionId)!;
+    const statusChanged = session.status !== "working";
     session.status = "working";
     session.waitingForInputSince = undefined;
     session.lastActivity = new Date();
     session.lastSeen = new Date();
     session.idleTimeoutMs = activity.idleTimeoutMs;
-    this.broadcast();
+    if (statusChanged) {
+      this.broadcast();
+    }
   }
 
   setCodexIdle(sessionId: string, cwd?: string): void {
@@ -62,6 +65,19 @@ export class SessionState {
       session.status = "idle";
       session.waitingForInputSince = undefined;
       session.lastActivity = new Date();
+      this.broadcast();
+    }
+  }
+
+  setWaitingForInput(sessionId: string, cwd?: string): void {
+    this.ensureSession(sessionId, cwd);
+    const session = this.sessions.get(sessionId)!;
+    const statusChanged = session.status !== "waiting_for_input";
+    session.status = "waiting_for_input";
+    session.waitingForInputSince ??= new Date();
+    session.lastActivity = new Date();
+    session.lastSeen = new Date();
+    if (statusChanged) {
       this.broadcast();
     }
   }
@@ -139,7 +155,7 @@ export class SessionState {
       (s) => s.status === "waiting_for_input"
     ).length;
     return {
-      blocked: working === 0,
+      blocked: waitingForInput > 0 || working === 0,
       sessions: sessions.length,
       working,
       waitingForInput,

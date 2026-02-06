@@ -50,7 +50,11 @@ export type ParsedCodexLine = {
   previousSessionId?: string;
   cwd?: string;
   markWorking: boolean;
+  markActivity: boolean;
+  markWaitingForInput: boolean;
   markIdle: boolean;
+  markLegacyIdleCandidate: boolean;
+  assistantMessagePhase?: string;
 };
 
 export function parseCodexLine(line: string, sessionId: string): ParsedCodexLine {
@@ -58,7 +62,11 @@ export function parseCodexLine(line: string, sessionId: string): ParsedCodexLine
   let previousSessionId: string | undefined;
   let cwd: string | undefined;
   let markWorking = false;
+  let markActivity = false;
+  let markWaitingForInput = false;
   let markIdle = false;
+  let markLegacyIdleCandidate = false;
+  let assistantMessagePhase: string | undefined;
   try {
     const payload = JSON.parse(line) as Record<string, unknown>;
     const entryType = typeof payload.type === "string" ? payload.type : undefined;
@@ -88,6 +96,15 @@ export function parseCodexLine(line: string, sessionId: string): ParsedCodexLine
       markWorking = true;
     }
     if (entryType === "event_msg" && innerTypeString === "agent_message") {
+      // Legacy Codex logs use agent_message as the terminal assistant event.
+      // Newer logs include intermediate assistant commentary, so this is only
+      // a fallback signal and must be validated by the watcher.
+      markLegacyIdleCandidate = true;
+    }
+    if (entryType === "event_msg" && innerTypeString === "agent_reasoning") {
+      markActivity = true;
+    }
+    if (entryType === "event_msg" && innerTypeString === "item_completed") {
       markIdle = true;
     }
     if (entryType === "response_item" && innerTypeString === "message") {
@@ -101,6 +118,37 @@ export function parseCodexLine(line: string, sessionId: string): ParsedCodexLine
           markWorking = true;
         }
       }
+      if (role === "assistant" && innerPayload && typeof innerPayload === "object") {
+        const phase = (innerPayload as Record<string, unknown>).phase;
+        if (typeof phase === "string" && phase.length > 0) {
+          assistantMessagePhase = phase;
+          if (phase === "final_answer") {
+            markIdle = true;
+          } else if (phase === "commentary") {
+            markActivity = true;
+          }
+        }
+      }
+    }
+    if (entryType === "response_item" && innerTypeString === "function_call") {
+      const callName =
+        innerPayload && typeof innerPayload === "object"
+          ? (innerPayload as Record<string, unknown>).name
+          : undefined;
+      if (callName === "request_user_input") {
+        markWaitingForInput = true;
+      } else {
+        markActivity = true;
+      }
+    }
+    if (
+      entryType === "response_item" &&
+      (innerTypeString === "reasoning" ||
+        innerTypeString === "function_call_output" ||
+        innerTypeString === "custom_tool_call" ||
+        innerTypeString === "custom_tool_call_output")
+    ) {
+      markActivity = true;
     }
   } catch {
     // Ignore malformed lines
@@ -111,7 +159,11 @@ export function parseCodexLine(line: string, sessionId: string): ParsedCodexLine
     previousSessionId,
     cwd,
     markWorking,
+    markActivity,
+    markWaitingForInput,
     markIdle,
+    markLegacyIdleCandidate,
+    assistantMessagePhase,
   };
 }
 

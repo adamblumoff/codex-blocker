@@ -6,7 +6,6 @@ import { startRandomPhraseRotation } from "./lib/phrase-rotation.js";
 export {};
 
 const MODAL_ID = "codex-blocker-modal";
-const TOAST_ID = "codex-blocker-toast";
 const iconUrl = chrome.runtime.getURL("icon-mark.svg");
 const PHRASE_ROTATION_MS = 6000;
 
@@ -27,7 +26,6 @@ interface PublicState {
 let lastKnownState: PublicState | null = null;
 let shouldBeBlocked = false;
 let blockedDomains: string[] = [];
-let toastDismissed = false;
 let observerActive = false;
 let statePort: chrome.runtime.Port | null = null;
 let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -126,7 +124,6 @@ function createModal(): void {
           lastBlocked = false;
           lastPauseMediaActive = false;
           resumePausedMedia();
-          removeToast();
           removeModal();
           chrome.runtime.sendMessage({ type: "GET_STATE" }, (state: PublicState) => {
             if (state) {
@@ -187,38 +184,6 @@ async function startHeadlineRotationWithStoredPhrases(): Promise<void> {
 function removeModal(): void {
   stopHeadlineRotationIfNeeded();
   getModal()?.remove();
-}
-
-function getToast(): HTMLElement | null {
-  return document.getElementById(TOAST_ID);
-}
-
-function showToast(): void {
-  if (getToast() || toastDismissed) return;
-
-  const container = document.createElement("div");
-  container.id = TOAST_ID;
-  const shadow = container.attachShadow({ mode: "open" });
-
-  shadow.innerHTML = `
-    <div style="all:initial;position:fixed;bottom:24px;right:24px;background:#1a1a1a;border:1px solid #333;border-radius:12px;padding:16px 20px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#fff;z-index:2147483647;display:flex;align-items:center;gap:12px;box-shadow:0 4px 12px rgba(0,0,0,0.3);-webkit-font-smoothing:antialiased;">
-      <span style="font-size:18px;">💬</span>
-      <span>Codex has a question for you!</span>
-      <button id="dismiss" style="all:initial;margin-left:8px;padding:4px 8px;background:#333;border:none;border-radius:6px;color:#888;font-family:Arial,Helvetica,sans-serif;font-size:12px;cursor:pointer;">Dismiss</button>
-    </div>
-  `;
-
-  const dismissBtn = shadow.getElementById("dismiss");
-  dismissBtn?.addEventListener("click", () => {
-    toastDismissed = true;
-    removeToast();
-  });
-
-  document.documentElement.appendChild(container);
-}
-
-function removeToast(): void {
-  getToast()?.remove();
 }
 
 function getRoastMode(): Promise<boolean> {
@@ -399,6 +364,11 @@ function renderState(state: PublicState): void {
     setDotColor(dot, "green");
     status.textContent = "Waiting for Codex";
     hint.textContent = "Open a terminal and start Codex";
+  } else if (state.waitingForInput > 0) {
+    message.textContent = "Codex is waiting for your input.";
+    setDotColor(dot, "green");
+    status.textContent = "Action Needed in Codex";
+    hint.textContent = "Return to Codex and answer the prompt to continue";
   } else {
     message.textContent = "Back to the grind.";
     setDotColor(dot, "green");
@@ -433,7 +403,6 @@ function handleState(state: PublicState): void {
   if (state.forceOpen && !state.forceBlock) {
     shouldBeBlocked = false;
     removeModal();
-    removeToast();
     resumePausedMedia();
     lastBlocked = false;
     lastPauseMediaActive = false;
@@ -443,7 +412,6 @@ function handleState(state: PublicState): void {
   if (!isBlockedDomain()) {
     shouldBeBlocked = false;
     removeModal();
-    removeToast();
     resumePausedMedia();
     lastBlocked = false;
     lastPauseMediaActive = false;
@@ -453,15 +421,7 @@ function handleState(state: PublicState): void {
   const isBlocked = applyOverrides(state.blocked, state.forceOpen, state.forceBlock);
   const pauseMediaActive = state.pauseMedia && isBlocked;
 
-  // Show toast notification when Codex has a question (non-blocking)
-  if (state.waitingForInput > 0) {
-    showToast();
-  } else {
-    toastDismissed = false; // Reset so next question can show toast
-    removeToast();
-  }
-
-  // Show blocking modal when truly idle
+  // Show blocking modal whenever blocking is active.
   if (isBlocked) {
     shouldBeBlocked = true;
     createModal();

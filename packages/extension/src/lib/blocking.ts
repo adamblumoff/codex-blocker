@@ -14,8 +14,12 @@ export function computeShouldBlock({
   waitingForInput,
 }: BlockInputs): boolean {
   const hasActiveSession = sessions > 0;
-  const isIdle = working === 0 && waitingForInput === 0;
-  return !bypassActive && (!serverConnected || (hasActiveSession && isIdle));
+  const hasWaitingForInput = waitingForInput > 0;
+  const isIdle = working === 0;
+  return (
+    !bypassActive &&
+    (!serverConnected || hasWaitingForInput || (hasActiveSession && isIdle))
+  );
 }
 
 export function applyOverrides(
