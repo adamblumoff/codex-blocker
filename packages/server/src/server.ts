@@ -1,7 +1,4 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "http";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import { homedir } from "os";
-import { dirname, join } from "path";
 import { WebSocketServer, WebSocket } from "ws";
 import type {
   ClientMessage,
@@ -16,12 +13,14 @@ import { CodexSessionWatcher } from "./codex.js";
 import {
   MobilePairingManager,
   createServerInstanceId,
-  createServerToken,
 } from "./mobile.js";
 import { publishMobileService, type MdnsServiceHandle } from "./mdns.js";
-
-const DEFAULT_TOKEN_DIR = join(homedir(), ".codex-blocker");
-const DEFAULT_TOKEN_PATH = join(DEFAULT_TOKEN_DIR, "token");
+import {
+  DEFAULT_TOKEN_PATH,
+  createAuthToken,
+  loadTokenFromPath,
+  saveTokenToPath,
+} from "./auth-token.js";
 const RATE_WINDOW_MS = 60_000;
 const RATE_LIMIT = 60;
 const MAX_WS_CONNECTIONS_PER_IP = 3;
@@ -39,23 +38,6 @@ type PairConfirmState = { failures: number; resetAt: number; lockoutUntil: numbe
 const rateByIp = new Map<string, RateState>();
 const wsConnectionsByIp = new Map<string, number>();
 const pairConfirmByIp = new Map<string, PairConfirmState>();
-
-function loadToken(tokenPath: string): string | null {
-  if (!existsSync(tokenPath)) return null;
-  try {
-    return readFileSync(tokenPath, "utf-8").trim() || null;
-  } catch {
-    return null;
-  }
-}
-
-function saveToken(tokenPath: string, token: string): void {
-  const tokenDir = dirname(tokenPath);
-  if (!existsSync(tokenDir)) {
-    mkdirSync(tokenDir, { recursive: true });
-  }
-  writeFileSync(tokenPath, token, "utf-8");
-}
 
 const CHROME_EXTENSION_ID_PATTERN = /^[a-p]{32}$/;
 
@@ -237,7 +219,7 @@ export function startServer(
   const publishMdns = options?.publishMdns ?? mobileEnabled;
   const mobileInstanceId = createServerInstanceId();
 
-  let authToken = loadToken(tokenPath);
+  let authToken = loadTokenFromPath(tokenPath);
   let activePort = port;
   let mdnsService: MdnsServiceHandle | null = null;
 
@@ -328,8 +310,8 @@ export function startServer(
         clearPairConfirmFailures(clientIp);
 
         if (!authToken) {
-          authToken = createServerToken();
-          saveToken(tokenPath, authToken);
+          authToken = createAuthToken();
+          saveTokenToPath(tokenPath, authToken);
         }
 
         const host = getResponseHost(req, bindHost, activePort);
@@ -359,7 +341,7 @@ export function startServer(
       providedToken
     ) {
       authToken = providedToken;
-      saveToken(tokenPath, providedToken);
+      saveTokenToPath(tokenPath, providedToken);
     } else {
       sendJson(res, { error: "Unauthorized" }, 401);
       return;
@@ -404,7 +386,7 @@ export function startServer(
       providedToken
     ) {
       authToken = providedToken;
-      saveToken(tokenPath, providedToken);
+      saveTokenToPath(tokenPath, providedToken);
     } else {
       ws.close(1008, "Unauthorized");
       return;

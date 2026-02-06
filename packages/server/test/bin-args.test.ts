@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 function parseCommandFromArgs(argv: string[]): string | null {
   const args = argv.filter((arg) => arg !== "--");
-  const flagsWithValues = new Set(["--port", "--bind", "--mobile-name"]);
+  const flagsWithValues = new Set(["--port", "--bind", "--mobile-name", "--token-path"]);
 
   for (let index = 0; index < args.length; index += 1) {
     const current = args[index];
@@ -32,5 +32,10 @@ describe("bin arg command detection", () => {
   it("returns null when no command token is present", () => {
     expect(parseCommandFromArgs(["--mobile", "--bind", "0.0.0.0"]))
       .toBeNull();
+  });
+
+  it("ignores --token-path value when parsing command tokens", () => {
+    expect(parseCommandFromArgs(["--token-path", "/tmp/token", "mobile:rotate-token"]))
+      .toBe("mobile:rotate-token");
   });
 });

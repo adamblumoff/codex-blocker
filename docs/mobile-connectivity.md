@@ -14,6 +14,7 @@
 - `npx codex-blocker mobile:fix` for automated Windows networking setup
 - `npx codex-blocker mobile:fix --allow-public` only when you must allow Public-profile Wi-Fi access
 - `npx codex-blocker mobile:remove` to undo networking setup created by `mobile:fix`
+- `npx codex-blocker mobile:rotate-token` to revoke current client tokens and force re-pair
 - Defaults to binding on `0.0.0.0` in mobile mode.
 - Publishes mDNS service `_codex-blocker._tcp`.
 - Exposes mobile endpoints:
@@ -53,6 +54,7 @@ Use `--mobile-no-auto-fix` to disable this startup behavior.
 - Extension token bootstrap is loopback-only (`127.0.0.1`/`::1`) even in `--mobile` mode.
 - Mobile flow uses explicit one-time pairing code (TTL: 2 minutes).
 - Once paired, mobile uses the same server token as other clients.
+- Server token files are written with owner-only permissions where supported.
 
 ## Discovery Behavior (Current App)
 

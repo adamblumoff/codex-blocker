@@ -99,6 +99,9 @@ npx codex-blocker mobile:fix --allow-public
 # Remove Windows portproxy + firewall rules created by mobile:fix
 npx codex-blocker mobile:remove
 
+# Rotate the auth token (forces re-pair/reconnect for existing clients)
+npx codex-blocker mobile:rotate-token
+
 # Show setup info
 npx codex-blocker --setup
 
@@ -111,6 +114,7 @@ npx codex-blocker --version
 
 SECURITY NOTE: IF YOU ENABLE MOBILE ACCESS, RUN `npx codex-blocker mobile:remove` WHEN YOU ARE DONE TO REMOVE FIREWALL/PORTPROXY EXPOSURE.
 `mobile:fix` opens Private-profile firewall by default; Public-profile access requires `--allow-public`.
+If you suspect token exposure, run `npx codex-blocker mobile:rotate-token` and re-pair clients.
 
 ## Features
 

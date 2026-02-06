@@ -6,12 +6,13 @@ import { startServer } from "./server.js";
 import { setupCodex, removeCodexSetup, isCodexAvailable } from "./setup.js";
 import { DEFAULT_PORT } from "./types.js";
 import { runMobileDoctor, runMobileFix, runMobileRemove } from "./mobile-network.js";
+import { DEFAULT_TOKEN_PATH, rotateTokenAtPath } from "./auth-token.js";
 
 const require = createRequire(import.meta.url);
 const { version } = require("../package.json") as { version?: string };
 
 const args = process.argv.slice(2).filter((arg) => arg !== "--");
-const FLAGS_WITH_VALUES = new Set(["--port", "--bind", "--mobile-name"]);
+const FLAGS_WITH_VALUES = new Set(["--port", "--bind", "--mobile-name", "--token-path"]);
 
 function prompt(question: string): Promise<string> {
   const rl = createInterface({
@@ -36,6 +37,7 @@ Usage:
   npx codex-blocker mobile:doctor [--port <port>]
   npx codex-blocker mobile:fix [--port <port>]
   npx codex-blocker mobile:remove [--port <port>]
+  npx codex-blocker mobile:rotate-token [--token-path <path>]
 
 Options:
   --setup     Show Codex setup info
@@ -46,6 +48,7 @@ Options:
   --mobile-no-auto-fix  Disable automatic mobile doctor+fix on startup
   --bind      Bind host (default: 127.0.0.1 or 0.0.0.0 with --mobile)
   --mobile-name  Friendly mobile discovery name
+  --token-path  Override token file path (default: ${DEFAULT_TOKEN_PATH})
   --version   Show version
   --help      Show this help message
 
@@ -60,6 +63,7 @@ Examples:
   npx codex-blocker mobile:fix
   npx codex-blocker mobile:fix --allow-public
   npx codex-blocker mobile:remove
+  npx codex-blocker mobile:rotate-token
 
 SECURITY NOTE:
   IF YOU ENABLE MOBILE NETWORKING, RUN "npx codex-blocker mobile:remove --port ${DEFAULT_PORT}"
@@ -127,6 +131,7 @@ async function main(): Promise<void> {
 
   const mobile = args.includes("--mobile");
   const allowPublicFirewallRule = args.includes("--allow-public");
+  const tokenPath = getStringFlag("--token-path") ?? DEFAULT_TOKEN_PATH;
   const bindHost = getStringFlag("--bind") ?? (mobile ? "0.0.0.0" : "127.0.0.1");
   const mobileServiceName = getStringFlag("--mobile-name") ?? "Codex Blocker";
 
@@ -145,6 +150,13 @@ async function main(): Promise<void> {
     process.exit(removed ? 0 : 1);
   }
 
+  if (command === "mobile:rotate-token") {
+    rotateTokenAtPath(tokenPath);
+    console.log(`Rotated auth token at ${tokenPath}`);
+    console.log("Existing clients must pair again to reconnect.");
+    process.exit(0);
+  }
+
   if (!isCodexAvailable()) {
     console.log("Codex sessions directory not found yet.");
     const answer = await prompt("Run Codex once to create it, then press enter to continue. ");
@@ -157,6 +169,7 @@ async function main(): Promise<void> {
     mobile,
     bindHost,
     mobileServiceName,
+    tokenPath,
   });
 
   const autoFixDisabled = args.includes("--mobile-no-auto-fix");
