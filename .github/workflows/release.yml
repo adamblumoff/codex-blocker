@@ -457,6 +457,7 @@ jobs:
         run: pnpm --filter @codex-blocker/extension zip
 
       - name: Upload extension to Chrome Web Store (optional smoke)
+        id: cws_upload_smoke
         if: github.event.inputs.cws_check_upload == 'true'
         env:
           CWS_ACCESS_TOKEN: ${{ steps.cws_token.outputs.access_token }}
@@ -478,6 +479,15 @@ jobs:
           )"
 
           if [ "$upload_status" -lt 200 ] || [ "$upload_status" -ge 300 ]; then
+            upload_error_reason="$(jq -r '.error.details[]? | select(.reason != null) | .reason' "$upload_body_file" | head -n 1)"
+            if [ "$upload_error_reason" = "NOT_UPDATEABLE" ]; then
+              echo "::notice::Skipping upload smoke verification: item is in review (NOT_UPDATEABLE)."
+              cat "$upload_body_file"
+              rm -f "$upload_body_file"
+              echo "result=blocked_in_review" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+
             echo "Chrome Web Store upload request failed with HTTP $upload_status"
             cat "$upload_body_file"
             rm -f "$upload_body_file"
@@ -546,10 +556,16 @@ jobs:
               ;;
           esac
 
+          echo "result=uploaded" >> "$GITHUB_OUTPUT"
+
       - name: Smoke test summary
         run: |
           if [ "${{ github.event.inputs.cws_check_upload }}" = "true" ]; then
-            echo "CWS smoke test passed (auth + status + upload)."
+            if [ "${{ steps.cws_upload_smoke.outputs.result }}" = "blocked_in_review" ]; then
+              echo "CWS smoke test passed (auth + status). Upload is currently blocked because the item is in review."
+            else
+              echo "CWS smoke test passed (auth + status + upload)."
+            fi
           else
             echo "CWS smoke test passed (auth + status only)."
           fi

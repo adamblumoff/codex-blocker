@@ -145,6 +145,8 @@ the `workflow_dispatch` trigger:
 - Default smoke run validates auth + fetches CWS status.
 - Optional upload smoke run (`cws_check_upload=true`) also builds/zips and uploads
   the extension package, but does not publish it.
+- If the existing item is currently under Chrome Web Store review, the upload smoke
+  step reports a non-fatal `NOT_UPDATEABLE` notice instead of failing the entire smoke run.
 
 ## Privacy
 

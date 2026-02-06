@@ -13,6 +13,7 @@ This patch fixes false mid-turn `idle` transitions introduced by newer Codex CLI
 - For Plan Mode `request_user_input`, use the same full blocking modal as other blocked states (removed separate question toast/notification path).
 - Keep backward compatibility for older Codex logs by using `event_msg.agent_message` as a delayed fallback idle signal when modern phase signals are absent.
 - Fix Chrome Web Store CI upload requests by using the explicit media upload protocol (`uploadType=media`) and add clearer upload error payload logging for easier debugging.
+- For manual CWS upload smoke checks, treat `NOT_UPDATEABLE` (item currently in review) as a non-fatal signal so auth/status validation can still pass.
 - Add regression tests for:
   - Codex CLI `0.98.0`-style commentary + tool-call turns.
   - Plan Mode `request_user_input` turns and waiting-state transitions.
