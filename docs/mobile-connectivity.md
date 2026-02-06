@@ -89,6 +89,9 @@ Common symptom:
    - On Public-profile Wi-Fi, use `npx codex-blocker mobile:fix --allow-public`.
 4. Re-run `mobile:doctor` until all checks pass.
 
+`mobile:fix` now auto-targets the active WSL IPv4 for `portproxy` when running from WSL.
+This avoids relying on Windows localhost forwarding (`127.0.0.1`) when that forwarding is unavailable.
+
 Example validation:
 
 - `netsh interface portproxy show v4tov4`

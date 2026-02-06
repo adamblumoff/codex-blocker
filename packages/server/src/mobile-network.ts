@@ -17,6 +17,7 @@ type WindowsDiagnostics = {
   networkCategory: "Public" | "Private" | "DomainAuthenticated" | "Unknown";
   wifiIp: string | null;
   hasPortProxy: boolean;
+  portProxyTarget: string | null;
   hasPrivateRule: boolean;
   hasPublicRule: boolean;
   localhostReachable: boolean;
@@ -38,6 +39,14 @@ export type WindowsDoctorAssessment = {
 export type MobileNetworkOptions = {
   allowPublicFirewallRule?: boolean;
 };
+
+const IPV4_MATCH =
+  /\b((?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3})\b/;
+
+export function parseFirstIpv4Candidate(raw: string): string | null {
+  const match = raw.match(IPV4_MATCH);
+  return match ? match[1] : null;
+}
 
 function detectWsl(): boolean {
   if (process.platform !== "linux") return false;
@@ -106,6 +115,20 @@ async function checkDiscovery(url: string): Promise<{ ok: boolean; details: stri
   }
 }
 
+async function resolvePortProxyConnectAddress(): Promise<string> {
+  if (!detectWsl()) {
+    return "127.0.0.1";
+  }
+
+  const probe = await runCommand("sh", ["-lc", "hostname -I"]);
+  if (probe.code !== 0) {
+    return "127.0.0.1";
+  }
+
+  const ip = parseFirstIpv4Candidate(probe.stdout);
+  return ip ?? "127.0.0.1";
+}
+
 function parseWindowsDiagnostics(rawJson: string): WindowsDiagnostics | null {
   try {
     const data = JSON.parse(rawJson) as Partial<WindowsDiagnostics>;
@@ -121,6 +144,8 @@ function parseWindowsDiagnostics(rawJson: string): WindowsDiagnostics | null {
           : "Unknown",
       wifiIp: typeof data.wifiIp === "string" ? data.wifiIp : null,
       hasPortProxy: Boolean(data.hasPortProxy),
+      portProxyTarget:
+        typeof data.portProxyTarget === "string" ? data.portProxyTarget : null,
       hasPrivateRule: Boolean(data.hasPrivateRule),
       hasPublicRule: Boolean(data.hasPublicRule),
       localhostReachable: Boolean(data.localhostReachable),
@@ -149,8 +174,18 @@ if ($profile) {
 }
 
 $proxyTable = netsh interface portproxy show v4tov4 | Out-String
-$proxyPattern = "0\\.0\\.0\\.0\\s+$port\\s+127\\.0\\.0\\.1\\s+$port"
-$hasPortProxy = [regex]::IsMatch($proxyTable, $proxyPattern)
+$proxyLine = ($proxyTable -split "\\r?\\n") |
+  Where-Object { $_ -match ("^\\s*0\\.0\\.0\\.0\\s+" + $port + "\\s+") } |
+  Select-Object -First 1
+$hasPortProxy = $false
+$portProxyTarget = $null
+if ($proxyLine) {
+  $parts = ($proxyLine -split "\\s+") | Where-Object { $_ -ne "" }
+  if ($parts.Count -ge 4 -and [string]$parts[3] -eq [string]$port) {
+    $hasPortProxy = $true
+    $portProxyTarget = [string]$parts[2]
+  }
+}
 
 $privateRule = Get-NetFirewallRule -DisplayName "Codex Blocker $port Private LocalSubnet" -ErrorAction SilentlyContinue
 $publicRule = Get-NetFirewallRule -DisplayName "Codex Blocker $port Public LocalSubnet" -ErrorAction SilentlyContinue
@@ -175,6 +210,7 @@ if ($wifiIp) {
   networkCategory = if ($profile) { [string]$profile.NetworkCategory } else { "Unknown" }
   wifiIp = $wifiIp
   hasPortProxy = [bool]$hasPortProxy
+  portProxyTarget = $portProxyTarget
   hasPrivateRule = [bool]$privateRule
   hasPublicRule = [bool]$publicRule
   localhostReachable = $localhostReachable
@@ -183,16 +219,21 @@ if ($wifiIp) {
 `.trim();
 }
 
-function buildWindowsFixScript(port: number, allowPublicFirewallRule: boolean): string {
+function buildWindowsFixScript(
+  port: number,
+  allowPublicFirewallRule: boolean,
+  connectAddress: string
+): string {
   const allowPublicLiteral = allowPublicFirewallRule ? "$true" : "$false";
   const elevatedCommands = `
 $ErrorActionPreference = 'Stop'
 $port = ${port}
 $allowPublic = ${allowPublicLiteral}
+$connectAddress = "${connectAddress}"
 
 netsh interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport=$port 2>$null | Out-Null
 netsh interface portproxy delete v4tov4 listenaddress=127.0.0.1 listenport=$port 2>$null | Out-Null
-netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=$port connectaddress=127.0.0.1 connectport=$port
+netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=$port connectaddress=$connectAddress connectport=$port
 
 if (-not $allowPublic) {
   Remove-NetFirewallRule -DisplayName "Codex Blocker $port Public LocalSubnet" -ErrorAction SilentlyContinue | Out-Null
@@ -212,7 +253,7 @@ foreach ($profile in $profiles) {
   New-NetFirewallRule -DisplayName $ruleName -Direction Inbound -Action Allow -Protocol TCP -LocalPort $port -Profile $profile -RemoteAddress LocalSubnet | Out-Null
 }
 
-Write-Output "Configured portproxy + firewall for port $port (allowPublic=$allowPublic)"
+Write-Output "Configured portproxy + firewall for port $port (allowPublic=$allowPublic, connectAddress=$connectAddress)"
 netsh interface portproxy show v4tov4
 `.trim();
 
@@ -276,10 +317,10 @@ export function assessWindowsDiagnostics(
   const checks: Array<{ name: string; ok: boolean; details: string }> = [];
 
   checks.push({
-    name: "Port proxy (0.0.0.0 -> 127.0.0.1)",
+    name: "Port proxy (0.0.0.0 -> target)",
     ok: diagnostics.hasPortProxy,
     details: diagnostics.hasPortProxy
-      ? `configured for TCP ${port}`
+      ? `configured for TCP ${port} -> ${diagnostics.portProxyTarget ?? "unknown"}`
       : `missing for TCP ${port}`,
   });
 
@@ -339,9 +380,6 @@ export function assessWindowsDiagnostics(
       "Public Wi-Fi profile detected. Either switch this network to Private or use --allow-public for mobile LAN access."
     );
   }
-  if (!diagnostics.localhostReachable) {
-    recommendations.push("Start the server in mobile mode: npx codex-blocker --mobile");
-  }
   if (
     diagnostics.localhostReachable &&
     diagnostics.hasPortProxy &&
@@ -378,6 +416,9 @@ export async function runMobileDoctor(
     ok: localCheck.ok,
     details: localCheck.details,
   });
+  if (!localCheck.ok) {
+    report.recommendations.push("Start the server in mobile mode: npx codex-blocker --mobile");
+  }
 
   const powershellExe = getPowerShellExecutable();
   if (!powershellExe) {
@@ -416,6 +457,12 @@ export async function runMobileDoctor(
           report.checks.push(check);
         }
         report.recommendations.push(...windowsAssessment.recommendations);
+
+        if (localCheck.ok && !diagnostics.localhostReachable) {
+          report.recommendations.push(
+            "Windows cannot reach the forwarded localhost port. Re-run mobile:fix so portproxy can target the current WSL IP."
+          );
+        }
       }
     }
   }
@@ -466,7 +513,8 @@ async function runMobileFixWithOptions(
     return false;
   }
 
-  const script = buildWindowsFixScript(port, allowPublicFirewallRule);
+  const connectAddress = await resolvePortProxyConnectAddress();
+  const script = buildWindowsFixScript(port, allowPublicFirewallRule, connectAddress);
   const result = await runPowerShellScript(powershellExe, script);
 
   if (result.code !== 0) {

@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { assessWindowsDiagnostics } from "../src/mobile-network.js";
+import {
+  assessWindowsDiagnostics,
+  parseFirstIpv4Candidate,
+} from "../src/mobile-network.js";
 
 describe("assessWindowsDiagnostics", () => {
+  it("parses the first IPv4 candidate from shell output", () => {
+    expect(parseFirstIpv4Candidate("172.27.80.2 10.0.0.4\n")).toBe("172.27.80.2");
+    expect(parseFirstIpv4Candidate("no ipv4 here")).toBeNull();
+  });
+
   it("recommends mobile:fix when port proxy is missing", () => {
     const assessment = assessWindowsDiagnostics(
       {
@@ -10,6 +18,7 @@ describe("assessWindowsDiagnostics", () => {
         networkCategory: "Private",
         wifiIp: "192.168.1.10",
         hasPortProxy: false,
+        portProxyTarget: null,
         hasPrivateRule: true,
         hasPublicRule: false,
         localhostReachable: true,
@@ -32,6 +41,7 @@ describe("assessWindowsDiagnostics", () => {
         networkCategory: "Public",
         wifiIp: "192.168.68.54",
         hasPortProxy: true,
+        portProxyTarget: "127.0.0.1",
         hasPrivateRule: true,
         hasPublicRule: false,
         localhostReachable: true,
@@ -59,6 +69,7 @@ describe("assessWindowsDiagnostics", () => {
         networkCategory: "Private",
         wifiIp: "192.168.68.54",
         hasPortProxy: true,
+        portProxyTarget: "127.0.0.1",
         hasPrivateRule: true,
         hasPublicRule: true,
         localhostReachable: true,
@@ -79,6 +90,7 @@ describe("assessWindowsDiagnostics", () => {
         networkCategory: "Public",
         wifiIp: "192.168.68.54",
         hasPortProxy: true,
+        portProxyTarget: "127.0.0.1",
         hasPrivateRule: true,
         hasPublicRule: true,
         localhostReachable: true,
