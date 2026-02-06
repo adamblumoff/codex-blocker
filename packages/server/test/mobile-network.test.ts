@@ -69,4 +69,25 @@ describe("assessWindowsDiagnostics", () => {
     expect(assessment.ok).toBe(true);
     expect(assessment.recommendations).toEqual([]);
   });
+
+  it("recommends router isolation check when LAN remains unreachable after host setup", () => {
+    const assessment = assessWindowsDiagnostics(
+      {
+        profileName: "Public Hotspot",
+        interfaceAlias: "Wi-Fi",
+        networkCategory: "Public",
+        wifiIp: "192.168.68.54",
+        hasPortProxy: true,
+        hasPrivateRule: true,
+        hasPublicRule: true,
+        localhostReachable: true,
+        lanReachable: false,
+      },
+      8765
+    );
+
+    expect(assessment.recommendations).toContain(
+      "Check router/client isolation or guest Wi-Fi settings (phone may be blocked from peer LAN devices)."
+    );
+  });
 });

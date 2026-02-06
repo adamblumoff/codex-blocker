@@ -201,8 +201,31 @@ Write-Output "Configured portproxy + firewall for port $port"
 netsh interface portproxy show v4tov4
 `.trim();
 
-  const encoded = toPowerShellEncodedCommand(elevatedCommands);
+  return buildWindowsElevatedScript(elevatedCommands);
+}
 
+function buildWindowsRemoveScript(port: number): string {
+  const elevatedCommands = `
+$ErrorActionPreference = 'SilentlyContinue'
+$port = ${port}
+
+netsh interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport=$port 2>$null | Out-Null
+netsh interface portproxy delete v4tov4 listenaddress=127.0.0.1 listenport=$port 2>$null | Out-Null
+netsh interface portproxy delete v4tov4 listenaddress=:: listenport=$port 2>$null | Out-Null
+
+Remove-NetFirewallRule -DisplayName "Codex Blocker $port Private LocalSubnet" -ErrorAction SilentlyContinue | Out-Null
+Remove-NetFirewallRule -DisplayName "Codex Blocker $port Public LocalSubnet" -ErrorAction SilentlyContinue | Out-Null
+Remove-NetFirewallRule -DisplayName "Codex Blocker $port" -ErrorAction SilentlyContinue | Out-Null
+
+Write-Output "Removed Codex Blocker networking setup for port $port"
+netsh interface portproxy show v4tov4
+`.trim();
+
+  return buildWindowsElevatedScript(elevatedCommands);
+}
+
+function buildWindowsElevatedScript(elevatedCommands: string): string {
+  const encoded = toPowerShellEncodedCommand(elevatedCommands);
   return `
 $ErrorActionPreference = 'Stop'
 $isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
@@ -405,4 +428,30 @@ export async function runMobileFix(port: number): Promise<boolean> {
 
   console.log("\nRunning doctor after fix...\n");
   return runMobileDoctor(port);
+}
+
+export async function runMobileRemove(port: number): Promise<boolean> {
+  const powershellExe = getPowerShellExecutable();
+  if (!powershellExe) {
+    console.error("PowerShell is required for mobile:remove but was not found.");
+    return false;
+  }
+
+  const script = buildWindowsRemoveScript(port);
+  const result = await runPowerShellScript(powershellExe, script);
+
+  if (result.code !== 0) {
+    const stderr = result.stderr.trim() || "unknown error";
+    console.error(`mobile:remove failed: ${stderr}`);
+    return false;
+  }
+
+  const stdout = result.stdout.trim();
+  if (stdout) {
+    console.log(stdout);
+  }
+
+  console.log("\nRunning doctor after remove...\n");
+  await runMobileDoctor(port);
+  return true;
 }

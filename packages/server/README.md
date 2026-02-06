@@ -32,6 +32,9 @@ npx codex-blocker --port 9000
 # Enable mobile/LAN mode
 npx codex-blocker --mobile
 
+# Enable mobile mode without startup auto doctor/fix
+npx codex-blocker --mobile --mobile-no-auto-fix
+
 # Override bind host
 npx codex-blocker --mobile --bind 0.0.0.0
 
@@ -43,6 +46,9 @@ npx codex-blocker mobile:doctor
 
 # Auto-fix Windows portproxy + firewall setup
 npx codex-blocker mobile:fix
+
+# Remove Windows portproxy + firewall setup created by mobile:fix
+npx codex-blocker mobile:remove
 
 # Remove setup (no-op)
 npx codex-blocker --remove
@@ -77,6 +83,7 @@ npx codex-blocker --version
    - Exposes discovery and pairing endpoints over local Wi-Fi
    - Publishes an mDNS service (`_codex-blocker._tcp`)
    - Supports token-authenticated `/status` + `/ws` from the iOS Expo app
+   - Runs `mobile:doctor` automatically on startup and runs `mobile:fix` if issues are found
 
 ## API
 

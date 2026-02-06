@@ -12,6 +12,7 @@
 - `npx codex-blocker --mobile`
 - `npx codex-blocker mobile:doctor` for diagnostics
 - `npx codex-blocker mobile:fix` for automated Windows networking setup
+- `npx codex-blocker mobile:remove` to undo networking setup created by `mobile:fix`
 - Defaults to binding on `0.0.0.0` in mobile mode.
 - Publishes mDNS service `_codex-blocker._tcp`.
 - Exposes mobile endpoints:
@@ -33,6 +34,10 @@
    - `Authorization: Bearer <token>` for `/status`
    - `?token=<token>` for `/ws`
 7. WebSocket delivers realtime state updates.
+
+When the server starts with `--mobile`, it now runs `mobile:doctor` automatically.
+If doctor reports fixable host networking issues, it automatically runs `mobile:fix`.
+Use `--mobile-no-auto-fix` to disable this startup behavior.
 
 ## Auth Model
 
@@ -66,7 +71,7 @@ Common symptom:
 ### Typical fix path
 
 1. Keep server running in WSL with `--mobile`.
-2. Run `npx codex-blocker mobile:doctor`.
+2. Run `npx codex-blocker mobile:doctor` (or just start with `--mobile` and let auto-check run).
 3. If doctor flags proxy/firewall issues, run `npx codex-blocker mobile:fix`.
 4. Re-run `mobile:doctor` until all checks pass.
 
@@ -99,6 +104,12 @@ If Windows succeeds but iPhone fails, check:
 
 Use this if you want to intentionally clear current Windows rules and verify that
 `mobile:fix` recreates everything.
+
+Preferred:
+
+```bash
+npx codex-blocker mobile:remove
+```
 
 Run in Administrator PowerShell:
 

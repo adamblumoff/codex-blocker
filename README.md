@@ -77,6 +77,9 @@ npx codex-blocker --port 9000
 # Enable mobile mode (LAN bind + mDNS + pairing endpoints)
 npx codex-blocker --mobile
 
+# Enable mobile mode without startup auto doctor/fix
+npx codex-blocker --mobile --mobile-no-auto-fix
+
 # Override bind host
 npx codex-blocker --mobile --bind 0.0.0.0
 
@@ -88,6 +91,9 @@ npx codex-blocker mobile:doctor
 
 # Auto-fix Windows portproxy + firewall (prompts for elevation if needed)
 npx codex-blocker mobile:fix
+
+# Remove Windows portproxy + firewall rules created by mobile:fix
+npx codex-blocker mobile:remove
 
 # Show setup info
 npx codex-blocker --setup

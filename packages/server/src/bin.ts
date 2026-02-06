@@ -5,7 +5,7 @@ import { createInterface } from "readline";
 import { startServer } from "./server.js";
 import { setupCodex, removeCodexSetup, isCodexAvailable } from "./setup.js";
 import { DEFAULT_PORT } from "./types.js";
-import { runMobileDoctor, runMobileFix } from "./mobile-network.js";
+import { runMobileDoctor, runMobileFix, runMobileRemove } from "./mobile-network.js";
 
 const require = createRequire(import.meta.url);
 const { version } = require("../package.json") as { version?: string };
@@ -35,12 +35,14 @@ Usage:
   npx codex-blocker [options]
   npx codex-blocker mobile:doctor [--port <port>]
   npx codex-blocker mobile:fix [--port <port>]
+  npx codex-blocker mobile:remove [--port <port>]
 
 Options:
   --setup     Show Codex setup info
   --remove    Remove Codex setup (no-op)
   --port      Server port (default: ${DEFAULT_PORT})
   --mobile    Enable mobile/LAN mode (binds to 0.0.0.0 by default)
+  --mobile-no-auto-fix  Disable automatic mobile doctor+fix on startup
   --bind      Bind host (default: 127.0.0.1 or 0.0.0.0 with --mobile)
   --mobile-name  Friendly mobile discovery name
   --version   Show version
@@ -53,6 +55,7 @@ Examples:
   npx codex-blocker --mobile --bind 0.0.0.0
   npx codex-blocker mobile:doctor
   npx codex-blocker mobile:fix
+  npx codex-blocker mobile:remove
 `);
 }
 
@@ -128,6 +131,11 @@ async function main(): Promise<void> {
     process.exit(healthy ? 0 : 1);
   }
 
+  if (command === "mobile:remove") {
+    const removed = await runMobileRemove(port);
+    process.exit(removed ? 0 : 1);
+  }
+
   if (!isCodexAvailable()) {
     console.log("Codex sessions directory not found yet.");
     const answer = await prompt("Run Codex once to create it, then press enter to continue. ");
@@ -136,11 +144,32 @@ async function main(): Promise<void> {
     }
   }
 
-  startServer(port, {
+  const handle = startServer(port, {
     mobile,
     bindHost,
     mobileServiceName,
   });
+
+  const autoFixDisabled = args.includes("--mobile-no-auto-fix");
+  if (mobile && !autoFixDisabled) {
+    void (async () => {
+      const activePort = await handle.ready;
+      console.log("\n[Codex Blocker] Running mobile doctor...");
+      const healthy = await runMobileDoctor(activePort);
+      if (healthy) {
+        console.log("[Codex Blocker] Mobile networking is healthy.\n");
+        return;
+      }
+
+      console.log("[Codex Blocker] Doctor detected issues. Running mobile fix...\n");
+      const fixed = await runMobileFix(activePort);
+      if (!fixed) {
+        console.warn(
+          "[Codex Blocker] Auto-fix did not fully resolve networking. Run `npx codex-blocker mobile:doctor` for details.\n"
+        );
+      }
+    })();
+  }
 }
 
 main();

@@ -14,6 +14,8 @@ Mobile setup should be one-click from the user perspective, without requiring us
 - Implemented:
   - `mobile:doctor` diagnostics command
   - `mobile:fix` automated Windows proxy/firewall setup (with elevation prompt when needed)
+  - `mobile:remove` cleanup command for undo/reset
+  - Startup auto-heal on `--mobile` (doctor first, fix on failure)
 - Remaining:
   - In-app guided setup UX
   - Relay fallback mode
