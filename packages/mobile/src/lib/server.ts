@@ -27,8 +27,12 @@ export function buildHttpUrl(host: string, port = DEFAULT_PORT, path = ""): stri
   return `http://${host}:${port}${path}`;
 }
 
-export function buildWsUrl(host: string, token: string, port = DEFAULT_PORT): string {
-  return `ws://${host}:${port}/ws?token=${encodeURIComponent(token)}`;
+export function buildWsUrl(host: string, port = DEFAULT_PORT): string {
+  return `ws://${host}:${port}/ws`;
+}
+
+export function buildWsProtocols(token: string): string[] {
+  return ["codex-blocker.v1", `codex-blocker-token.${token}`];
 }
 
 export async function fetchDiscovery(

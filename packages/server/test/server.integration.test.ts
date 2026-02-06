@@ -16,6 +16,7 @@ type ServerContext = {
 
 const EXTENSION_ORIGIN =
   "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const WS_TOKEN_PROTOCOL_PREFIX = "codex-blocker-token.";
 
 function waitForMessage(ws: WebSocket): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
@@ -99,6 +100,29 @@ describe("server integration", () => {
     const updated = await updatedPromise;
     expect(updated.type).toBe("state");
     expect(updated.working).toBe(1);
+
+    await new Promise<void>((resolve) => {
+      ws.once("close", () => resolve());
+      ws.close();
+    });
+  });
+
+  it("accepts websocket token via subprotocol instead of query string", async () => {
+    const ws = new WebSocket(
+      `ws://127.0.0.1:${ctx.port}/ws`,
+      ["codex-blocker.v1", `${WS_TOKEN_PROTOCOL_PREFIX}${ctx.token}`],
+      { headers: { origin: EXTENSION_ORIGIN } }
+    );
+
+    const initialPromise = waitForMessage(ws);
+
+    await new Promise<void>((resolve, reject) => {
+      ws.on("open", () => resolve());
+      ws.on("error", reject);
+    });
+
+    const initial = await initialPromise;
+    expect(initial.type).toBe("state");
 
     await new Promise<void>((resolve) => {
       ws.once("close", () => resolve());

@@ -6,6 +6,7 @@ const WS_URL_BASE = "ws://localhost:8765/ws";
 const KEEPALIVE_INTERVAL = 20_000;
 const RECONNECT_BASE_DELAY = 1_000;
 const RECONNECT_MAX_DELAY = 30_000;
+const WS_TOKEN_PROTOCOL_PREFIX = "codex-blocker-token.";
 const TOKEN_STORAGE_KEY = "authToken";
 const PHRASE_SEED_KEY = "phraseSeed";
 const DISCONNECT_GRACE_MS = 10_000;
@@ -115,7 +116,12 @@ function ensurePhraseSeed(): Promise<number> {
 }
 
 function buildWsUrl(): string {
-  return authToken ? `${WS_URL_BASE}?token=${encodeURIComponent(authToken)}` : WS_URL_BASE;
+  return WS_URL_BASE;
+}
+
+function buildWsProtocols(): string[] | undefined {
+  if (!authToken) return undefined;
+  return ["codex-blocker.v1", `${WS_TOKEN_PROTOCOL_PREFIX}${authToken}`];
 }
 
 // Compute derived state
@@ -174,7 +180,8 @@ async function connect() {
     if (!authToken) {
       authToken = await ensureToken();
     }
-    websocket = new WebSocket(buildWsUrl());
+    const protocols = buildWsProtocols();
+    websocket = protocols ? new WebSocket(buildWsUrl(), protocols) : new WebSocket(buildWsUrl());
 
     websocket.onopen = () => {
       console.log("[Codex Blocker] Connected");

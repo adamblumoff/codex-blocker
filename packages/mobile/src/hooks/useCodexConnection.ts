@@ -3,6 +3,7 @@ import type { CodexStatus, ConnectionPhase } from "../types";
 import { discoverServer } from "../lib/discovery";
 import {
   fetchDiscovery,
+  buildWsProtocols,
   confirmPairing,
   fetchStatus,
   parseStateMessage,
@@ -49,7 +50,7 @@ function connectRealtimeSocket(
   const connect = () => {
     if (closing) return;
 
-    websocket = new WebSocket(buildWsUrl(host, token));
+    websocket = new WebSocket(buildWsUrl(host), buildWsProtocols(token));
 
     websocket.onopen = () => {
       retries = 0;

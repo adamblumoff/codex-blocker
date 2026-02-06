@@ -23,7 +23,7 @@
   - `POST /mobile/pair/confirm`
 - Existing auth-protected endpoints remain unchanged:
   - `GET /status`
-  - `GET ws://<host>:8765/ws?token=<token>`
+  - `GET ws://<host>:8765/ws` (token sent via WebSocket subprotocol)
 
 SECURITY NOTE: RUN `npx codex-blocker mobile:remove` WHEN YOU ARE DONE WITH MOBILE ACCESS TO REMOVE FIREWALL + PORTPROXY RULES.
 
@@ -37,7 +37,7 @@ SECURITY NOTE: RUN `npx codex-blocker mobile:remove` WHEN YOU ARE DONE WITH MOBI
 6. Server returns token + URLs.
 7. App stores host/token and reconnects with:
    - `Authorization: Bearer <token>` for `/status`
-   - `?token=<token>` for `/ws`
+   - `codex-blocker-token.<token>` WebSocket subprotocol for `/ws`
 8. WebSocket delivers realtime state updates.
 
 Pairing brute-force guard:

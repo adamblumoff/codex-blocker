@@ -121,7 +121,8 @@ Connect to `ws://localhost:8765/ws` to receive real-time state updates:
 }
 ```
 
-Include `?token=<token>` when connecting from mobile clients.
+Use the `codex-blocker-token.<token>` subprotocol for mobile/client authentication.
+Legacy `?token=<token>` query auth is still accepted for backward compatibility.
 
 ## Programmatic Usage
 

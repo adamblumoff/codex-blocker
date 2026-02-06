@@ -28,6 +28,7 @@ const MOBILE_SERVICE_TYPE = "codex-blocker";
 const PAIR_CONFIRM_WINDOW_MS = 60_000;
 const PAIR_CONFIRM_MAX_FAILURES = 6;
 const PAIR_CONFIRM_LOCKOUT_MS = 2 * 60_000;
+const WS_TOKEN_PROTOCOL_PREFIX = "codex-blocker-token.";
 
 const INVALID_JSON_SENTINEL = Symbol("invalid-json");
 
@@ -137,6 +138,48 @@ function readAuthToken(req: IncomingMessage, url: URL): string | null {
   const alt = req.headers["x-codex-blocker-token"];
   if (typeof alt === "string" && alt.length > 0) return alt;
   return null;
+}
+
+function parseWebSocketProtocols(
+  protocolsHeader: string | string[] | undefined
+): string[] {
+  const raw = Array.isArray(protocolsHeader)
+    ? protocolsHeader.join(",")
+    : protocolsHeader ?? "";
+  return raw
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+}
+
+function readTokenFromWebSocketProtocols(
+  protocolsHeader: string | string[] | undefined
+): string | null {
+  const protocols = parseWebSocketProtocols(protocolsHeader);
+  for (const protocol of protocols) {
+    if (protocol.startsWith(WS_TOKEN_PROTOCOL_PREFIX)) {
+      const token = protocol.slice(WS_TOKEN_PROTOCOL_PREFIX.length).trim();
+      if (token.length > 0) return token;
+    }
+  }
+  return null;
+}
+
+function readWebSocketAuthToken(req: IncomingMessage, url: URL): string | null {
+  const protocolToken = readTokenFromWebSocketProtocols(
+    req.headers["sec-websocket-protocol"]
+  );
+  if (protocolToken) return protocolToken;
+  return readAuthToken(req, url);
+}
+
+function decrementWsConnectionCount(clientIp: string): void {
+  const next = (wsConnectionsByIp.get(clientIp) ?? 1) - 1;
+  if (next <= 0) {
+    wsConnectionsByIp.delete(clientIp);
+    return;
+  }
+  wsConnectionsByIp.set(clientIp, next);
 }
 
 function sendJson(res: ServerResponse, data: unknown, status = 200): void {
@@ -359,7 +402,7 @@ export function startServer(
 
   wss.on("connection", (ws: WebSocket, req) => {
     const wsUrl = new URL(req.url || "", `http://localhost:${activePort}`);
-    const providedToken = wsUrl.searchParams.get("token");
+    const providedToken = readWebSocketAuthToken(req, wsUrl);
     const origin = req.headers.origin;
     const allowOrigin = isTrustedChromeExtensionOrigin(origin);
     const clientIp = getClientIp(req);
@@ -413,18 +456,12 @@ export function startServer(
 
     ws.on("close", () => {
       unsubscribe();
-      wsConnectionsByIp.set(
-        clientIp,
-        Math.max(0, (wsConnectionsByIp.get(clientIp) ?? 1) - 1)
-      );
+      decrementWsConnectionCount(clientIp);
     });
 
     ws.on("error", () => {
       unsubscribe();
-      wsConnectionsByIp.set(
-        clientIp,
-        Math.max(0, (wsConnectionsByIp.get(clientIp) ?? 1) - 1)
-      );
+      decrementWsConnectionCount(clientIp);
     });
   });
 
