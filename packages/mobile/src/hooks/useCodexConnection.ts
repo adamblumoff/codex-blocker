@@ -26,6 +26,7 @@ type HookState = {
   host: string | null;
   error: string | null;
   lastUpdatedAt: number | null;
+  pairingExpiresAt: number | null;
 };
 
 type WebSocketHandle = {
@@ -95,14 +96,17 @@ function connectRealtimeSocket(
 }
 
 export function useCodexConnection() {
-  const [{ phase, status, host, error, lastUpdatedAt }, setState] = useState<HookState>({
+  const [{ phase, status, host, error, lastUpdatedAt, pairingExpiresAt }, setState] =
+    useState<HookState>({
     phase: "booting",
     status: EMPTY_STATUS,
     host: null,
     error: null,
     lastUpdatedAt: null,
+    pairingExpiresAt: null,
   });
   const socketRef = useRef<WebSocketHandle | null>(null);
+  const pairingRef = useRef<{ host: string; port: number; expiresAt: number } | null>(null);
 
   const closeSocket = useCallback(() => {
     socketRef.current?.close();
@@ -123,6 +127,7 @@ export function useCodexConnection() {
         phase: "connecting",
         host: nextHost,
         error: null,
+        pairingExpiresAt: null,
       }));
 
       const initialStatus = await fetchStatus(nextHost, token);
@@ -137,7 +142,9 @@ export function useCodexConnection() {
         host: nextHost,
         error: null,
         lastUpdatedAt: Date.now(),
+        pairingExpiresAt: null,
       }));
+      pairingRef.current = null;
 
       closeSocket();
       socketRef.current = connectRealtimeSocket(
@@ -161,6 +168,7 @@ export function useCodexConnection() {
 
   const bootstrap = useCallback(async () => {
     closeSocket();
+    pairingRef.current = null;
 
     try {
       const saved = await loadConnection();
@@ -175,6 +183,7 @@ export function useCodexConnection() {
         ...current,
         phase: "discovering",
         error: null,
+        pairingExpiresAt: null,
       }));
 
       const discovered = await discoverServer(saved.host ?? undefined);
@@ -183,6 +192,7 @@ export function useCodexConnection() {
           ...current,
           phase: "error",
           error: "Could not discover codex-blocker on this Wi-Fi network.",
+          pairingExpiresAt: null,
         }));
         return;
       }
@@ -204,14 +214,18 @@ export function useCodexConnection() {
       }));
 
       const pairing = await startPairing(discovered.host, discovered.port);
-      const confirmed = await confirmPairing(discovered.host, pairing.code, discovered.port);
-      activeToken = confirmed.token;
-      await saveConnection(discovered.host, activeToken);
-
-      const connected = await connectWithToken(discovered.host, activeToken);
-      if (!connected) {
-        throw new Error("Paired successfully, but failed to read server status.");
-      }
+      pairingRef.current = {
+        host: discovered.host,
+        port: discovered.port,
+        expiresAt: pairing.expiresAt,
+      };
+      setState((current) => ({
+        ...current,
+        phase: "pairing",
+        host: discovered.host,
+        error: null,
+        pairingExpiresAt: pairing.expiresAt,
+      }));
     } catch (cause) {
       closeSocket();
       const message = cause instanceof Error ? cause.message : "Failed to connect.";
@@ -219,9 +233,69 @@ export function useCodexConnection() {
         ...current,
         phase: "error",
         error: message,
+        pairingExpiresAt: null,
       }));
     }
   }, [closeSocket, connectWithToken]);
+
+  const submitPairingCode = useCallback(
+    async (rawCode: string): Promise<boolean> => {
+      const pending = pairingRef.current;
+      const code = rawCode.trim();
+
+      if (!pending) {
+        setState((current) => ({
+          ...current,
+          phase: "error",
+          error: "No active pairing request. Retry connection first.",
+        }));
+        return false;
+      }
+
+      if (!/^\d{6}$/.test(code)) {
+        setState((current) => ({
+          ...current,
+          phase: "pairing",
+          host: pending.host,
+          error: "Enter the 6-digit code shown in the server terminal.",
+          pairingExpiresAt: pending.expiresAt,
+        }));
+        return false;
+      }
+
+      setState((current) => ({
+        ...current,
+        phase: "connecting",
+        host: pending.host,
+        error: null,
+      }));
+
+      try {
+        const confirmed = await confirmPairing(pending.host, code, pending.port);
+        await saveConnection(pending.host, confirmed.token);
+        const connected = await connectWithToken(pending.host, confirmed.token);
+        if (!connected) {
+          throw new Error("Paired successfully, but failed to read server status.");
+        }
+        return true;
+      } catch (cause) {
+        const message =
+          cause instanceof Error ? cause.message : "Failed to confirm pairing code.";
+        setState((current) => ({
+          ...current,
+          phase: "pairing",
+          host: pending.host,
+          error:
+            message === "Unable to confirm mobile pairing."
+              ? "Invalid or expired code. Start pairing again in the server terminal."
+              : message,
+          pairingExpiresAt: pending.expiresAt,
+        }));
+        return false;
+      }
+    },
+    [connectWithToken]
+  );
 
   useEffect(() => {
     void bootstrap();
@@ -234,6 +308,8 @@ export function useCodexConnection() {
     host,
     error,
     lastUpdatedAt,
+    pairingExpiresAt,
     reconnect: bootstrap,
+    submitPairingCode,
   };
 }

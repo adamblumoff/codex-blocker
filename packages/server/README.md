@@ -96,7 +96,7 @@ SECURITY NOTE: IF YOU ENABLE MOBILE ACCESS, RUN `npx codex-blocker mobile:remove
 |----------|--------|-------------|
 | `/status` | GET | Returns current state (sessions, blocked status) |
 | `/mobile/discovery` | GET | Returns local discovery metadata for mobile clients |
-| `/mobile/pair/start` | POST | Creates a one-time 6-digit pairing code (2 minute TTL) |
+| `/mobile/pair/start` | POST | Activates/reuses a 6-digit pairing code in the server terminal (2 minute TTL) |
 | `/mobile/pair/confirm` | POST | Exchanges valid pairing code for auth token + endpoint URLs |
 
 ### WebSocket

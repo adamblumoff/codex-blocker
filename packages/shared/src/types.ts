@@ -38,7 +38,6 @@ export interface MobileDiscoveryResponse {
 }
 
 export interface MobilePairStartResponse {
-  code: string;
   expiresAt: number;
 }
 

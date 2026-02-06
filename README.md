@@ -67,6 +67,7 @@ pnpm --filter @codex-blocker/mobile dev
 ```
 
 Then open Expo Go on iPhone and connect to the project.
+When pairing is required, enter the 6-digit code shown in the server terminal.
 
 ## Server CLI
 

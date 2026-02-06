@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import WebSocket from "ws";
+import { MobilePairingManager } from "../src/mobile.js";
 import { startServer } from "../src/server.js";
 import { SessionState } from "../src/state.js";
 
@@ -12,6 +13,7 @@ type MobileContext = {
   tempDir: string;
   state: SessionState;
   token: string;
+  pairing: MobilePairingManager;
 };
 
 function waitForMessage(ws: WebSocket): Promise<Record<string, unknown>> {
@@ -39,6 +41,7 @@ describe("mobile integration", () => {
   beforeAll(async () => {
     const tempDir = await mkdtemp(join(tmpdir(), "codex-blocker-mobile-test-"));
     const state = new SessionState();
+    const pairing = new MobilePairingManager(() => {});
     const handle = startServer(0, {
       tokenPath: join(tempDir, "token"),
       startWatcher: false,
@@ -46,9 +49,10 @@ describe("mobile integration", () => {
       mobile: true,
       publishMdns: false,
       log: false,
+      mobilePairingManager: pairing,
     });
     const port = await handle.ready;
-    Object.assign(ctx, { handle, port, tempDir, state });
+    Object.assign(ctx, { handle, port, tempDir, state, pairing });
   });
 
   afterAll(async () => {
@@ -74,7 +78,8 @@ describe("mobile integration", () => {
     });
     expect(startRes.status).toBe(200);
     const startPayload = (await startRes.json()) as Record<string, unknown>;
-    expect(startPayload.code).toMatch(/^\d{6}$/);
+    expect(startPayload.code).toBeUndefined();
+    expect(typeof startPayload.expiresAt).toBe("number");
 
     const badConfirmRes = await fetch(`http://127.0.0.1:${ctx.port}/mobile/pair/confirm`, {
       method: "POST",
@@ -86,12 +91,36 @@ describe("mobile integration", () => {
     const confirmRes = await fetch(`http://127.0.0.1:${ctx.port}/mobile/pair/confirm`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code: startPayload.code }),
+      body: JSON.stringify({ code: ctx.pairing?.startPairing().code }),
     });
     expect(confirmRes.status).toBe(200);
     const confirmPayload = (await confirmRes.json()) as Record<string, unknown>;
     expect(typeof confirmPayload.token).toBe("string");
     ctx.token = confirmPayload.token as string;
+  });
+
+  it("locks out repeated invalid pairing attempts", async () => {
+    await fetch(`http://127.0.0.1:${ctx.port}/mobile/pair/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    for (let index = 0; index < 6; index += 1) {
+      const res = await fetch(`http://127.0.0.1:${ctx.port}/mobile/pair/confirm`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: "111111" }),
+      });
+      expect(res.status).toBe(401);
+    }
+
+    const lockedOut = await fetch(`http://127.0.0.1:${ctx.port}/mobile/pair/confirm`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: "222222" }),
+    });
+    expect(lockedOut.status).toBe(429);
   });
 
   it("accepts paired token for status and websocket", async () => {

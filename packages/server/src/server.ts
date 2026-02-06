@@ -26,14 +26,19 @@ const RATE_WINDOW_MS = 60_000;
 const RATE_LIMIT = 60;
 const MAX_WS_CONNECTIONS_PER_IP = 3;
 const MOBILE_SERVICE_TYPE = "codex-blocker";
+const PAIR_CONFIRM_WINDOW_MS = 60_000;
+const PAIR_CONFIRM_MAX_FAILURES = 6;
+const PAIR_CONFIRM_LOCKOUT_MS = 2 * 60_000;
 
 const INVALID_JSON_SENTINEL = Symbol("invalid-json");
 
 type JsonBody = Record<string, unknown> | typeof INVALID_JSON_SENTINEL;
 type RateState = { count: number; resetAt: number };
+type PairConfirmState = { failures: number; resetAt: number; lockoutUntil: number };
 
 const rateByIp = new Map<string, RateState>();
 const wsConnectionsByIp = new Map<string, number>();
+const pairConfirmByIp = new Map<string, PairConfirmState>();
 
 function loadToken(tokenPath: string): string | null {
   if (!existsSync(tokenPath)) return null;
@@ -107,6 +112,39 @@ function checkRateLimit(ip: string): boolean {
   return true;
 }
 
+function getPairConfirmState(ip: string): PairConfirmState {
+  const now = Date.now();
+  const current = pairConfirmByIp.get(ip);
+  if (!current || current.resetAt <= now) {
+    const next = {
+      failures: 0,
+      resetAt: now + PAIR_CONFIRM_WINDOW_MS,
+      lockoutUntil: 0,
+    };
+    pairConfirmByIp.set(ip, next);
+    return next;
+  }
+  return current;
+}
+
+function canAttemptPairConfirm(ip: string): boolean {
+  const state = getPairConfirmState(ip);
+  return state.lockoutUntil <= Date.now();
+}
+
+function recordPairConfirmFailure(ip: string): void {
+  const state = getPairConfirmState(ip);
+  state.failures += 1;
+  if (state.failures >= PAIR_CONFIRM_MAX_FAILURES) {
+    state.failures = 0;
+    state.lockoutUntil = Date.now() + PAIR_CONFIRM_LOCKOUT_MS;
+  }
+}
+
+function clearPairConfirmFailures(ip: string): void {
+  pairConfirmByIp.delete(ip);
+}
+
 function readAuthToken(req: IncomingMessage, url: URL): string | null {
   const header = req.headers.authorization;
   if (header && header.startsWith("Bearer ")) {
@@ -176,6 +214,7 @@ export type ServerOptions = {
   mobile?: boolean;
   mobileServiceName?: string;
   publishMdns?: boolean;
+  mobilePairingManager?: MobilePairingManager;
 };
 
 export type ServerHandle = {
@@ -203,7 +242,8 @@ export function startServer(
   let mdnsService: MdnsServiceHandle | null = null;
 
   const mobilePairing = mobileEnabled
-    ? new MobilePairingManager((message) => {
+    ? options?.mobilePairingManager ??
+      new MobilePairingManager((message) => {
         if (logBanner) {
           console.log(message);
         }
@@ -254,7 +294,6 @@ export function startServer(
       if (req.method === "POST" && url.pathname === "/mobile/pair/start") {
         const pairingCode = mobilePairing.startPairing();
         const payload: MobilePairStartResponse = {
-          code: pairingCode.code,
           expiresAt: pairingCode.expiresAt,
         };
         sendJson(res, payload);
@@ -262,6 +301,11 @@ export function startServer(
       }
 
       if (req.method === "POST" && url.pathname === "/mobile/pair/confirm") {
+        if (!canAttemptPairConfirm(clientIp)) {
+          sendJson(res, { error: "Too Many Requests" }, 429);
+          return;
+        }
+
         const body = await readJsonBody(req);
         if (body === INVALID_JSON_SENTINEL) {
           sendJson(res, { error: "Invalid JSON" }, 400);
@@ -276,9 +320,12 @@ export function startServer(
 
         const confirmed = mobilePairing.confirmPairing(code);
         if (!confirmed) {
+          recordPairConfirmFailure(clientIp);
           sendJson(res, { error: "Invalid or expired pairing code" }, 401);
           return;
         }
+
+        clearPairConfirmFailures(clientIp);
 
         if (!authToken) {
           authToken = createServerToken();

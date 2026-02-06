@@ -27,6 +27,11 @@ export class MobilePairingManager {
   ) {}
 
   startPairing(): PairingCode {
+    this.expireIfNeeded();
+    if (this.pairing) {
+      return { ...this.pairing };
+    }
+
     const next = {
       code: randomInt(0, 1_000_000).toString().padStart(6, "0"),
       expiresAt: this.now() + MOBILE_PAIRING_TTL_MS,

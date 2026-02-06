@@ -26,4 +26,19 @@ describe("mobile pairing manager", () => {
     expect(pairing.getStatus().active).toBe(false);
     expect(pairing.confirmPairing(created.code)).toBe(false);
   });
+
+  it("reuses the active pairing code until it expires", () => {
+    let now = 1_000;
+    const pairing = new MobilePairingManager(() => {}, () => now);
+    const first = pairing.startPairing();
+    const second = pairing.startPairing();
+
+    expect(second.code).toBe(first.code);
+    expect(second.expiresAt).toBe(first.expiresAt);
+
+    now = first.expiresAt + 1;
+    const third = pairing.startPairing();
+    expect(third.code).not.toBe(first.code);
+    expect(third.expiresAt).toBeGreaterThan(first.expiresAt);
+  });
 });

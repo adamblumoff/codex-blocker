@@ -29,13 +29,18 @@ SECURITY NOTE: RUN `npx codex-blocker mobile:remove` WHEN YOU ARE DONE WITH MOBI
 
 1. Server starts in mobile mode.
 2. iPhone app discovers server over local network.
-3. App calls `POST /mobile/pair/start` and receives a 6-digit code.
-4. App immediately confirms code via `POST /mobile/pair/confirm`.
-5. Server returns token + URLs.
-6. App stores host/token and reconnects with:
+3. App calls `POST /mobile/pair/start` to activate or reuse the current pairing window.
+4. User reads the 6-digit code from the server terminal and enters it in the app.
+5. App confirms code via `POST /mobile/pair/confirm`.
+6. Server returns token + URLs.
+7. App stores host/token and reconnects with:
    - `Authorization: Bearer <token>` for `/status`
    - `?token=<token>` for `/ws`
-7. WebSocket delivers realtime state updates.
+8. WebSocket delivers realtime state updates.
+
+Pairing brute-force guard:
+
+- 6 failed code confirmations in one minute lock pairing confirmations for that client for 2 minutes.
 
 When the server starts with `--mobile`, it now runs `mobile:doctor` automatically.
 If doctor reports fixable host networking issues, it automatically runs `mobile:fix`.

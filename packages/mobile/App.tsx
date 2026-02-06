@@ -6,6 +6,7 @@ import {
   StyleSheet,
   Switch,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
@@ -34,14 +35,35 @@ function formatLastUpdate(value: number | null): string {
   return new Date(value).toLocaleTimeString();
 }
 
+function formatPairingExpiry(value: number | null): string {
+  if (!value) return "-";
+  return new Date(value).toLocaleTimeString();
+}
+
 export default function App() {
-  const { phase, status, host, error, lastUpdatedAt, reconnect } = useCodexConnection();
+  const {
+    phase,
+    status,
+    host,
+    error,
+    lastUpdatedAt,
+    pairingExpiresAt,
+    reconnect,
+    submitPairingCode,
+  } = useCodexConnection();
   const [preferences, setPreferences] = useState<MobilePreferences>(DEFAULT_PREFERENCES);
+  const [pairingCode, setPairingCode] = useState("");
   const previousBlockedRef = useRef<boolean | null>(null);
 
   useEffect(() => {
     void loadPreferences().then(setPreferences);
   }, []);
+
+  useEffect(() => {
+    if (phase !== "pairing") {
+      setPairingCode("");
+    }
+  }, [phase]);
 
   const updatePreferences = useCallback(async (next: MobilePreferences) => {
     setPreferences(next);
@@ -132,10 +154,17 @@ export default function App() {
           </View>
           <Text style={styles.hostText}>{host ? `Server: ${host}` : "Server: searching"}</Text>
           <Text style={styles.hostText}>Last update: {formatLastUpdate(lastUpdatedAt)}</Text>
-          {phase !== "connected" ? (
+          {phase === "booting" || phase === "discovering" || phase === "connecting" ? (
             <View style={styles.discoveryRow}>
               <ActivityIndicator size="small" color="#8b6e26" />
               <Text style={styles.discoveryText}>Connecting over local Wi-Fi...</Text>
+            </View>
+          ) : null}
+          {phase === "pairing" ? (
+            <View style={styles.discoveryRow}>
+              <Text style={styles.discoveryText}>
+                Enter the 6-digit pairing code from your Codex Blocker terminal.
+              </Text>
             </View>
           ) : null}
           {error ? <Text style={styles.errorText}>{error}</Text> : null}
@@ -143,6 +172,31 @@ export default function App() {
             <Text style={styles.retryLabel}>Retry Connection</Text>
           </TouchableOpacity>
         </View>
+
+        {phase === "pairing" ? (
+          <View style={styles.pairingCard}>
+            <Text style={styles.sectionTitle}>Pair This Phone</Text>
+            <Text style={styles.pairingSubtitle}>
+              Code expires at {formatPairingExpiry(pairingExpiresAt)}. Start pairing again in your
+              terminal if this code times out.
+            </Text>
+            <TextInput
+              style={styles.pairingInput}
+              value={pairingCode}
+              onChangeText={setPairingCode}
+              keyboardType="number-pad"
+              maxLength={6}
+              placeholder="123456"
+              placeholderTextColor="#8a8090"
+            />
+            <TouchableOpacity
+              style={styles.pairButton}
+              onPress={() => void submitPairingCode(pairingCode)}
+            >
+              <Text style={styles.retryLabel}>Confirm Pairing Code</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
 
         <View style={styles.metricsCard}>
           <Text style={styles.sectionTitle}>Server State</Text>
@@ -267,6 +321,38 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#d8cdb9",
     gap: 12,
+  },
+  pairingCard: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: "#dfd7c9",
+    gap: 10,
+  },
+  pairingSubtitle: {
+    fontSize: 12,
+    color: "#546075",
+  },
+  pairingInput: {
+    borderWidth: 1,
+    borderColor: "#d8cdb9",
+    backgroundColor: "#fffaf2",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    fontSize: 24,
+    letterSpacing: 4,
+    color: "#1d2433",
+    fontWeight: "700",
+    textAlign: "center",
+  },
+  pairButton: {
+    marginTop: 2,
+    backgroundColor: "#1f7a4d",
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: "center",
   },
   sectionTitle: {
     fontSize: 18,
