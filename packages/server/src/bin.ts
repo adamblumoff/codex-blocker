@@ -42,6 +42,7 @@ Options:
   --remove    Remove Codex setup (no-op)
   --port      Server port (default: ${DEFAULT_PORT})
   --mobile    Enable mobile/LAN mode (binds to 0.0.0.0 by default)
+  --allow-public  Allow firewall opening on Public profile (higher risk)
   --mobile-no-auto-fix  Disable automatic mobile doctor+fix on startup
   --bind      Bind host (default: 127.0.0.1 or 0.0.0.0 with --mobile)
   --mobile-name  Friendly mobile discovery name
@@ -52,9 +53,12 @@ Examples:
   npx codex-blocker            # Start the server
   npx codex-blocker --port 9000
   npx codex-blocker --mobile
+  npx codex-blocker --mobile --allow-public
   npx codex-blocker --mobile --bind 0.0.0.0
   npx codex-blocker mobile:doctor
+  npx codex-blocker mobile:doctor --allow-public
   npx codex-blocker mobile:fix
+  npx codex-blocker mobile:fix --allow-public
   npx codex-blocker mobile:remove
 
 SECURITY NOTE:
@@ -122,16 +126,17 @@ async function main(): Promise<void> {
   }
 
   const mobile = args.includes("--mobile");
+  const allowPublicFirewallRule = args.includes("--allow-public");
   const bindHost = getStringFlag("--bind") ?? (mobile ? "0.0.0.0" : "127.0.0.1");
   const mobileServiceName = getStringFlag("--mobile-name") ?? "Codex Blocker";
 
   if (command === "mobile:doctor") {
-    const healthy = await runMobileDoctor(port);
+    const healthy = await runMobileDoctor(port, { allowPublicFirewallRule });
     process.exit(healthy ? 0 : 1);
   }
 
   if (command === "mobile:fix") {
-    const healthy = await runMobileFix(port);
+    const healthy = await runMobileFix(port, { allowPublicFirewallRule });
     process.exit(healthy ? 0 : 1);
   }
 
@@ -158,18 +163,23 @@ async function main(): Promise<void> {
   if (mobile && !autoFixDisabled) {
     void (async () => {
       const activePort = await handle.ready;
+      if (allowPublicFirewallRule) {
+        console.warn(
+          "[Codex Blocker] SECURITY WARNING: --allow-public ENABLES FIREWALL ACCESS ON PUBLIC WI-FI.\n"
+        );
+      }
       console.log(
         `[Codex Blocker] SECURITY NOTE: RUN \`npx codex-blocker mobile:remove --port ${activePort}\` TO REMOVE FIREWALL + PORTPROXY RULES WHEN MOBILE ACCESS IS NO LONGER NEEDED.\n`
       );
       console.log("\n[Codex Blocker] Running mobile doctor...");
-      const healthy = await runMobileDoctor(activePort);
+      const healthy = await runMobileDoctor(activePort, { allowPublicFirewallRule });
       if (healthy) {
         console.log("[Codex Blocker] Mobile networking is healthy.\n");
         return;
       }
 
       console.log("[Codex Blocker] Doctor detected issues. Running mobile fix...\n");
-      const fixed = await runMobileFix(activePort);
+      const fixed = await runMobileFix(activePort, { allowPublicFirewallRule });
       if (!fixed) {
         console.warn(
           "[Codex Blocker] Auto-fix did not fully resolve networking. Run `npx codex-blocker mobile:doctor` for details.\n"
@@ -179,6 +189,11 @@ async function main(): Promise<void> {
   } else if (mobile) {
     void (async () => {
       const activePort = await handle.ready;
+      if (allowPublicFirewallRule) {
+        console.warn(
+          "[Codex Blocker] SECURITY WARNING: --allow-public ENABLES FIREWALL ACCESS ON PUBLIC WI-FI.\n"
+        );
+      }
       console.log(
         `[Codex Blocker] SECURITY NOTE: RUN \`npx codex-blocker mobile:remove --port ${activePort}\` TO REMOVE FIREWALL + PORTPROXY RULES WHEN MOBILE ACCESS IS NO LONGER NEEDED.\n`
       );

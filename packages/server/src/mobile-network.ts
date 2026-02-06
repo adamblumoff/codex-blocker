@@ -35,6 +35,10 @@ export type WindowsDoctorAssessment = {
   ok: boolean;
 };
 
+export type MobileNetworkOptions = {
+  allowPublicFirewallRule?: boolean;
+};
+
 function detectWsl(): boolean {
   if (process.platform !== "linux") return false;
   return Boolean(process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP);
@@ -179,16 +183,27 @@ if ($wifiIp) {
 `.trim();
 }
 
-function buildWindowsFixScript(port: number): string {
+function buildWindowsFixScript(port: number, allowPublicFirewallRule: boolean): string {
+  const allowPublicLiteral = allowPublicFirewallRule ? "$true" : "$false";
   const elevatedCommands = `
 $ErrorActionPreference = 'Stop'
 $port = ${port}
+$allowPublic = ${allowPublicLiteral}
 
 netsh interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport=$port 2>$null | Out-Null
 netsh interface portproxy delete v4tov4 listenaddress=127.0.0.1 listenport=$port 2>$null | Out-Null
 netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=$port connectaddress=127.0.0.1 connectport=$port
 
-foreach ($profile in @('Private', 'Public')) {
+if (-not $allowPublic) {
+  Remove-NetFirewallRule -DisplayName "Codex Blocker $port Public LocalSubnet" -ErrorAction SilentlyContinue | Out-Null
+}
+
+$profiles = @('Private')
+if ($allowPublic) {
+  $profiles += 'Public'
+}
+
+foreach ($profile in $profiles) {
   $ruleName = "Codex Blocker $port $profile LocalSubnet"
   if (Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue) {
     Remove-NetFirewallRule -DisplayName $ruleName | Out-Null
@@ -197,7 +212,7 @@ foreach ($profile in @('Private', 'Public')) {
   New-NetFirewallRule -DisplayName $ruleName -Direction Inbound -Action Allow -Protocol TCP -LocalPort $port -Profile $profile -RemoteAddress LocalSubnet | Out-Null
 }
 
-Write-Output "Configured portproxy + firewall for port $port"
+Write-Output "Configured portproxy + firewall for port $port (allowPublic=$allowPublic)"
 netsh interface portproxy show v4tov4
 `.trim();
 
@@ -254,8 +269,10 @@ async function runPowerShellScript(
 
 export function assessWindowsDiagnostics(
   diagnostics: WindowsDiagnostics,
-  port: number
+  port: number,
+  options?: MobileNetworkOptions
 ): WindowsDoctorAssessment {
+  const allowPublicFirewallRule = options?.allowPublicFirewallRule ?? false;
   const checks: Array<{ name: string; ok: boolean; details: string }> = [];
 
   checks.push({
@@ -267,17 +284,25 @@ export function assessWindowsDiagnostics(
   });
 
   const category = diagnostics.networkCategory;
-  const profileRuleOk =
-    category === "Public"
+  let profileRuleOk = false;
+  let profileDetails = `private=${diagnostics.hasPrivateRule}, public=${diagnostics.hasPublicRule}`;
+  if (category === "Public") {
+    profileRuleOk = allowPublicFirewallRule
       ? diagnostics.hasPublicRule
-      : category === "Private"
-        ? diagnostics.hasPrivateRule
-        : diagnostics.hasPrivateRule || diagnostics.hasPublicRule;
+      : false;
+    profileDetails = allowPublicFirewallRule
+      ? `private=${diagnostics.hasPrivateRule}, public=${diagnostics.hasPublicRule}`
+      : "public profile is locked down by default; pass --allow-public if you need LAN access on public Wi-Fi";
+  } else if (category === "Private") {
+    profileRuleOk = diagnostics.hasPrivateRule;
+  } else {
+    profileRuleOk = diagnostics.hasPrivateRule || diagnostics.hasPublicRule;
+  }
 
   checks.push({
     name: `Firewall rule for ${category} profile`,
     ok: profileRuleOk,
-    details: `private=${diagnostics.hasPrivateRule}, public=${diagnostics.hasPublicRule}`,
+    details: profileDetails,
   });
 
   checks.push({
@@ -299,8 +324,20 @@ export function assessWindowsDiagnostics(
   });
 
   const recommendations: string[] = [];
+  const fixCommand = allowPublicFirewallRule
+    ? `Run: npx codex-blocker mobile:fix --port ${port} --allow-public`
+    : `Run: npx codex-blocker mobile:fix --port ${port}`;
   if (!diagnostics.hasPortProxy || !profileRuleOk) {
-    recommendations.push(`Run: npx codex-blocker mobile:fix --port ${port}`);
+    recommendations.push(
+      category === "Public" && !allowPublicFirewallRule
+        ? `Run: npx codex-blocker mobile:fix --port ${port} --allow-public`
+        : fixCommand
+    );
+  }
+  if (category === "Public" && !allowPublicFirewallRule) {
+    recommendations.push(
+      "Public Wi-Fi profile detected. Either switch this network to Private or use --allow-public for mobile LAN access."
+    );
   }
   if (!diagnostics.localhostReachable) {
     recommendations.push("Start the server in mobile mode: npx codex-blocker --mobile");
@@ -324,7 +361,11 @@ export function assessWindowsDiagnostics(
   };
 }
 
-export async function runMobileDoctor(port: number): Promise<boolean> {
+export async function runMobileDoctor(
+  port: number,
+  options?: MobileNetworkOptions
+): Promise<boolean> {
+  const allowPublicFirewallRule = options?.allowPublicFirewallRule ?? false;
   const report: DoctorReport = {
     ok: true,
     checks: [],
@@ -368,7 +409,9 @@ export async function runMobileDoctor(port: number): Promise<boolean> {
           "Unable to parse Windows diagnostics output. Re-run with a clean shell."
         );
       } else {
-        const windowsAssessment = assessWindowsDiagnostics(diagnostics, port);
+        const windowsAssessment = assessWindowsDiagnostics(diagnostics, port, {
+          allowPublicFirewallRule,
+        });
         for (const check of windowsAssessment.checks) {
           report.checks.push(check);
         }
@@ -405,14 +448,25 @@ export async function runMobileDoctor(port: number): Promise<boolean> {
   return report.ok;
 }
 
-export async function runMobileFix(port: number): Promise<boolean> {
+export async function runMobileFix(
+  port: number,
+  options?: MobileNetworkOptions
+): Promise<boolean> {
+  return runMobileFixWithOptions(port, options);
+}
+
+async function runMobileFixWithOptions(
+  port: number,
+  options?: MobileNetworkOptions
+): Promise<boolean> {
+  const allowPublicFirewallRule = options?.allowPublicFirewallRule ?? false;
   const powershellExe = getPowerShellExecutable();
   if (!powershellExe) {
     console.error("PowerShell is required for mobile:fix but was not found.");
     return false;
   }
 
-  const script = buildWindowsFixScript(port);
+  const script = buildWindowsFixScript(port, allowPublicFirewallRule);
   const result = await runPowerShellScript(powershellExe, script);
 
   if (result.code !== 0) {
@@ -427,7 +481,7 @@ export async function runMobileFix(port: number): Promise<boolean> {
   }
 
   console.log("\nRunning doctor after fix...\n");
-  return runMobileDoctor(port);
+  return runMobileDoctor(port, { allowPublicFirewallRule });
 }
 
 export async function runMobileRemove(port: number): Promise<boolean> {

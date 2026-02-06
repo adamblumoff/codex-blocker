@@ -24,7 +24,7 @@ describe("assessWindowsDiagnostics", () => {
     );
   });
 
-  it("flags public profile mismatch when only private rule exists", () => {
+  it("requires explicit allow-public mode on public network profiles", () => {
     const assessment = assessWindowsDiagnostics(
       {
         profileName: "Cafe Wi-Fi",
@@ -37,7 +37,8 @@ describe("assessWindowsDiagnostics", () => {
         localhostReachable: true,
         lanReachable: false,
       },
-      8765
+      8765,
+      { allowPublicFirewallRule: false }
     );
 
     const firewallCheck = assessment.checks.find(
@@ -46,7 +47,7 @@ describe("assessWindowsDiagnostics", () => {
 
     expect(firewallCheck?.ok).toBe(false);
     expect(assessment.recommendations).toContain(
-      "Run: npx codex-blocker mobile:fix --port 8765"
+      "Run: npx codex-blocker mobile:fix --port 8765 --allow-public"
     );
   });
 
@@ -83,7 +84,8 @@ describe("assessWindowsDiagnostics", () => {
         localhostReachable: true,
         lanReachable: false,
       },
-      8765
+      8765,
+      { allowPublicFirewallRule: true }
     );
 
     expect(assessment.recommendations).toContain(

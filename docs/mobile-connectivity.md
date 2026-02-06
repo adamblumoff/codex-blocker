@@ -12,6 +12,7 @@
 - `npx codex-blocker --mobile`
 - `npx codex-blocker mobile:doctor` for diagnostics
 - `npx codex-blocker mobile:fix` for automated Windows networking setup
+- `npx codex-blocker mobile:fix --allow-public` only when you must allow Public-profile Wi-Fi access
 - `npx codex-blocker mobile:remove` to undo networking setup created by `mobile:fix`
 - Defaults to binding on `0.0.0.0` in mobile mode.
 - Publishes mDNS service `_codex-blocker._tcp`.
@@ -81,6 +82,7 @@ Common symptom:
 1. Keep server running in WSL with `--mobile`.
 2. Run `npx codex-blocker mobile:doctor` (or just start with `--mobile` and let auto-check run).
 3. If doctor flags proxy/firewall issues, run `npx codex-blocker mobile:fix`.
+   - On Public-profile Wi-Fi, use `npx codex-blocker mobile:fix --allow-public`.
 4. Re-run `mobile:doctor` until all checks pass.
 
 Example validation:

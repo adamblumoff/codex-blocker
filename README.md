@@ -93,6 +93,9 @@ npx codex-blocker mobile:doctor
 # Auto-fix Windows portproxy + firewall (prompts for elevation if needed)
 npx codex-blocker mobile:fix
 
+# Explicitly allow Public-profile firewall access (higher risk)
+npx codex-blocker mobile:fix --allow-public
+
 # Remove Windows portproxy + firewall rules created by mobile:fix
 npx codex-blocker mobile:remove
 
@@ -107,6 +110,7 @@ npx codex-blocker --version
 ```
 
 SECURITY NOTE: IF YOU ENABLE MOBILE ACCESS, RUN `npx codex-blocker mobile:remove` WHEN YOU ARE DONE TO REMOVE FIREWALL/PORTPROXY EXPOSURE.
+`mobile:fix` opens Private-profile firewall by default; Public-profile access requires `--allow-public`.
 
 ## Features
 
