@@ -60,6 +60,8 @@ npx codex-blocker --help
 npx codex-blocker --version
 ```
 
+SECURITY NOTE: IF YOU ENABLE MOBILE ACCESS, RUN `npx codex-blocker mobile:remove` WHEN YOU ARE DONE TO REMOVE FIREWALL/PORTPROXY EXPOSURE.
+
 ## How It Works
 
 1. **Codex sessions** — The server tails Codex session logs under `~/.codex/sessions`
@@ -83,6 +85,7 @@ npx codex-blocker --version
    - Exposes discovery and pairing endpoints over local Wi-Fi
    - Publishes an mDNS service (`_codex-blocker._tcp`)
    - Supports token-authenticated `/status` + `/ws` from the iOS Expo app
+   - Restricts extension token bootstrap to loopback clients (not LAN clients)
    - Runs `mobile:doctor` automatically on startup and runs `mobile:fix` if issues are found
 
 ## API

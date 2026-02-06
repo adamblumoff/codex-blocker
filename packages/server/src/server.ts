@@ -52,8 +52,43 @@ function saveToken(tokenPath: string, token: string): void {
   writeFileSync(tokenPath, token, "utf-8");
 }
 
-function isChromeExtensionOrigin(origin?: string | null): boolean {
-  return Boolean(origin && origin.startsWith("chrome-extension://"));
+const CHROME_EXTENSION_ID_PATTERN = /^[a-p]{32}$/;
+
+export function isTrustedChromeExtensionOrigin(origin?: string | null): boolean {
+  if (!origin) return false;
+  try {
+    const parsed = new URL(origin);
+    return (
+      parsed.protocol === "chrome-extension:" &&
+      CHROME_EXTENSION_ID_PATTERN.test(parsed.hostname)
+    );
+  } catch {
+    return false;
+  }
+}
+
+export function isLoopbackClientIp(clientIp?: string | null): boolean {
+  if (!clientIp) return false;
+  const normalized = clientIp.startsWith("::ffff:") ? clientIp.slice(7) : clientIp;
+  return normalized === "127.0.0.1" || normalized === "::1";
+}
+
+type BootstrapAuthTokenParams = {
+  authToken: string | null;
+  providedToken: string | null;
+  origin?: string | null;
+  clientIp: string;
+};
+
+export function canBootstrapAuthToken({
+  authToken,
+  providedToken,
+  origin,
+  clientIp,
+}: BootstrapAuthTokenParams): boolean {
+  if (authToken || !providedToken) return false;
+  if (!isTrustedChromeExtensionOrigin(origin)) return false;
+  return isLoopbackClientIp(clientIp);
 }
 
 function getClientIp(req: IncomingMessage): string {
@@ -184,7 +219,7 @@ export function startServer(
 
     const url = new URL(req.url || "/", `http://localhost:${activePort}`);
     const origin = req.headers.origin;
-    const allowExtensionOrigin = isChromeExtensionOrigin(origin);
+    const allowExtensionOrigin = isTrustedChromeExtensionOrigin(origin);
 
     if (allowExtensionOrigin && origin) {
       res.setHeader("Access-Control-Allow-Origin", origin);
@@ -267,7 +302,15 @@ export function startServer(
         sendJson(res, { error: "Unauthorized" }, 401);
         return;
       }
-    } else if (providedToken && allowExtensionOrigin) {
+    } else if (
+      canBootstrapAuthToken({
+        authToken,
+        providedToken,
+        origin,
+        clientIp,
+      }) &&
+      providedToken
+    ) {
       authToken = providedToken;
       saveToken(tokenPath, providedToken);
     } else {
@@ -289,7 +332,7 @@ export function startServer(
     const wsUrl = new URL(req.url || "", `http://localhost:${activePort}`);
     const providedToken = wsUrl.searchParams.get("token");
     const origin = req.headers.origin;
-    const allowOrigin = isChromeExtensionOrigin(origin);
+    const allowOrigin = isTrustedChromeExtensionOrigin(origin);
     const clientIp = getClientIp(req);
 
     const currentConnections = wsConnectionsByIp.get(clientIp) ?? 0;
@@ -303,7 +346,16 @@ export function startServer(
         ws.close(1008, "Unauthorized");
         return;
       }
-    } else if (providedToken && allowOrigin) {
+    } else if (
+      canBootstrapAuthToken({
+        authToken,
+        providedToken,
+        origin,
+        clientIp,
+      }) &&
+      allowOrigin &&
+      providedToken
+    ) {
       authToken = providedToken;
       saveToken(tokenPath, providedToken);
     } else {

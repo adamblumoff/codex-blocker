@@ -105,6 +105,8 @@ npx codex-blocker --help
 npx codex-blocker --version
 ```
 
+SECURITY NOTE: IF YOU ENABLE MOBILE ACCESS, RUN `npx codex-blocker mobile:remove` WHEN YOU ARE DONE TO REMOVE FIREWALL/PORTPROXY EXPOSURE.
+
 ## Features
 
 - **Soft blocking** — Sites show a modal overlay, not a hard block
@@ -120,6 +122,7 @@ npx codex-blocker --version
 - **Works offline** — Blocks everything when server isn't running (safety default)
 - **Mobile LAN mode** — Optional pairing/discovery endpoints for iPhone app connections
 - **Expo iOS app (TypeScript)** — Realtime status, notifications toggle, and mobile blocking-mode controls
+- **Loopback-only extension bootstrap** — Initial extension token bootstrap is restricted to local loopback clients
 
 ## Requirements
 

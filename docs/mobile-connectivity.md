@@ -23,6 +23,8 @@
   - `GET /status`
   - `GET ws://<host>:8765/ws?token=<token>`
 
+SECURITY NOTE: RUN `npx codex-blocker mobile:remove` WHEN YOU ARE DONE WITH MOBILE ACCESS TO REMOVE FIREWALL + PORTPROXY RULES.
+
 ## End-to-End Flow
 
 1. Server starts in mobile mode.
@@ -42,6 +44,7 @@ Use `--mobile-no-auto-fix` to disable this startup behavior.
 ## Auth Model
 
 - Extension bootstrap flow still works (origin-restricted token bootstrap).
+- Extension token bootstrap is loopback-only (`127.0.0.1`/`::1`) even in `--mobile` mode.
 - Mobile flow uses explicit one-time pairing code (TTL: 2 minutes).
 - Once paired, mobile uses the same server token as other clients.
 

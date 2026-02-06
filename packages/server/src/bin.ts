@@ -56,6 +56,10 @@ Examples:
   npx codex-blocker mobile:doctor
   npx codex-blocker mobile:fix
   npx codex-blocker mobile:remove
+
+SECURITY NOTE:
+  IF YOU ENABLE MOBILE NETWORKING, RUN "npx codex-blocker mobile:remove --port ${DEFAULT_PORT}"
+  TO REMOVE FIREWALL + PORTPROXY CHANGES WHEN YOU NO LONGER NEED MOBILE ACCESS.
 `);
 }
 
@@ -154,6 +158,9 @@ async function main(): Promise<void> {
   if (mobile && !autoFixDisabled) {
     void (async () => {
       const activePort = await handle.ready;
+      console.log(
+        `[Codex Blocker] SECURITY NOTE: RUN \`npx codex-blocker mobile:remove --port ${activePort}\` TO REMOVE FIREWALL + PORTPROXY RULES WHEN MOBILE ACCESS IS NO LONGER NEEDED.\n`
+      );
       console.log("\n[Codex Blocker] Running mobile doctor...");
       const healthy = await runMobileDoctor(activePort);
       if (healthy) {
@@ -168,6 +175,13 @@ async function main(): Promise<void> {
           "[Codex Blocker] Auto-fix did not fully resolve networking. Run `npx codex-blocker mobile:doctor` for details.\n"
         );
       }
+    })();
+  } else if (mobile) {
+    void (async () => {
+      const activePort = await handle.ready;
+      console.log(
+        `[Codex Blocker] SECURITY NOTE: RUN \`npx codex-blocker mobile:remove --port ${activePort}\` TO REMOVE FIREWALL + PORTPROXY RULES WHEN MOBILE ACCESS IS NO LONGER NEEDED.\n`
+      );
     })();
   }
 }

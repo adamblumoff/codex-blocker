@@ -14,6 +14,9 @@ type ServerContext = {
   state: SessionState;
 };
 
+const EXTENSION_ORIGIN =
+  "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
 function waitForMessage(ws: WebSocket): Promise<Record<string, unknown>> {
   return new Promise((resolve, reject) => {
     const onMessage = (data: WebSocket.RawData) => {
@@ -68,7 +71,7 @@ describe("server integration", () => {
     const res = await fetch(`http://127.0.0.1:${ctx.port}/status`, {
       headers: {
         Authorization: `Bearer ${ctx.token}`,
-        Origin: "chrome-extension://test",
+        Origin: EXTENSION_ORIGIN,
       },
     });
     expect(res.status).toBe(200);
@@ -78,7 +81,7 @@ describe("server integration", () => {
 
   it("broadcasts state updates over WebSocket", async () => {
     const ws = new WebSocket(`ws://127.0.0.1:${ctx.port}/ws?token=${ctx.token}`, {
-      headers: { origin: "chrome-extension://test" },
+      headers: { origin: EXTENSION_ORIGIN },
     });
 
     const initialPromise = waitForMessage(ws);
