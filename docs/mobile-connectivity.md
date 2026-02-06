@@ -55,6 +55,8 @@ Use `--mobile-no-auto-fix` to disable this startup behavior.
 - Mobile flow uses explicit one-time pairing code (TTL: 2 minutes).
 - Once paired, mobile uses the same server token as other clients.
 - Server token files are written with owner-only permissions where supported.
+- Mobile app stores auth token in secure storage and pins the first trusted server `instanceId`.
+- If discovered `instanceId` changes, the app clears saved creds and requires re-pairing.
 
 ## Discovery Behavior (Current App)
 

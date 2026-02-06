@@ -132,6 +132,7 @@ If you suspect token exposure, run `npx codex-blocker mobile:rotate-token` and r
 - **Mobile LAN mode** — Optional pairing/discovery endpoints for iPhone app connections
 - **Expo iOS app (TypeScript)** — Realtime status, notifications toggle, and mobile blocking-mode controls
 - **Loopback-only extension bootstrap** — Initial extension token bootstrap is restricted to local loopback clients
+- **Pinned mobile server identity** — App trusts first seen server instance and requires re-pair on identity changes
 
 ## Requirements
 

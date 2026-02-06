@@ -2,13 +2,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { CodexStatus, ConnectionPhase } from "../types";
 import { discoverServer } from "../lib/discovery";
 import {
+  fetchDiscovery,
   confirmPairing,
   fetchStatus,
   parseStateMessage,
   startPairing,
   buildWsUrl,
 } from "../lib/server";
-import { loadConnection, saveConnection } from "../lib/storage";
+import { clearConnection, loadConnection, saveConnection } from "../lib/storage";
+import { shouldTrustDiscoveredInstance } from "../lib/trust";
 
 const RECONNECT_BASE_DELAY_MS = 1_000;
 const RECONNECT_MAX_DELAY_MS = 20_000;
@@ -106,7 +108,12 @@ export function useCodexConnection() {
     pairingExpiresAt: null,
   });
   const socketRef = useRef<WebSocketHandle | null>(null);
-  const pairingRef = useRef<{ host: string; port: number; expiresAt: number } | null>(null);
+  const pairingRef = useRef<{
+    host: string;
+    port: number;
+    expiresAt: number;
+    instanceId: string;
+  } | null>(null);
 
   const closeSocket = useCallback(() => {
     socketRef.current?.close();
@@ -166,19 +173,44 @@ export function useCodexConnection() {
     [closeSocket, setConnecting]
   );
 
+  const beginPairing = useCallback(
+    async (
+      hostToPair: string,
+      portToPair: number,
+      instanceId: string,
+      errorMessage: string | null
+    ) => {
+      setState((current) => ({
+        ...current,
+        phase: "pairing",
+        host: hostToPair,
+        error: errorMessage,
+      }));
+
+      const pairing = await startPairing(hostToPair, portToPair);
+      pairingRef.current = {
+        host: hostToPair,
+        port: portToPair,
+        expiresAt: pairing.expiresAt,
+        instanceId,
+      };
+      setState((current) => ({
+        ...current,
+        phase: "pairing",
+        host: hostToPair,
+        error: errorMessage,
+        pairingExpiresAt: pairing.expiresAt,
+      }));
+    },
+    []
+  );
+
   const bootstrap = useCallback(async () => {
     closeSocket();
     pairingRef.current = null;
 
     try {
       const saved = await loadConnection();
-      if (saved.host && saved.token) {
-        const restored = await connectWithToken(saved.host, saved.token);
-        if (restored) {
-          return;
-        }
-      }
-
       setState((current) => ({
         ...current,
         phase: "discovering",
@@ -186,7 +218,10 @@ export function useCodexConnection() {
         pairingExpiresAt: null,
       }));
 
-      const discovered = await discoverServer(saved.host ?? undefined);
+      let discovered = saved.host ? await fetchDiscovery(saved.host) : null;
+      if (!discovered) {
+        discovered = await discoverServer(saved.host ?? undefined);
+      }
       if (!discovered) {
         setState((current) => ({
           ...current,
@@ -197,35 +232,42 @@ export function useCodexConnection() {
         return;
       }
 
-      let activeToken = saved.token;
+      const trustedServer = shouldTrustDiscoveredInstance(
+        saved.instanceId,
+        discovered.info.instanceId
+      );
+
+      if (!trustedServer) {
+        await clearConnection();
+        await beginPairing(
+          discovered.host,
+          discovered.port,
+          discovered.info.instanceId,
+          "Detected a different Codex Blocker server identity. Re-enter pairing code to trust this server."
+        );
+        return;
+      }
+
+      const activeToken = saved.token;
       if (activeToken) {
         const connected = await connectWithToken(discovered.host, activeToken);
         if (connected) {
-          await saveConnection(discovered.host, activeToken);
+          await saveConnection(
+            discovered.host,
+            activeToken,
+            discovered.info.instanceId
+          );
           return;
         }
+        await clearConnection();
       }
 
-      setState((current) => ({
-        ...current,
-        phase: "pairing",
-        host: discovered.host,
-        error: null,
-      }));
-
-      const pairing = await startPairing(discovered.host, discovered.port);
-      pairingRef.current = {
-        host: discovered.host,
-        port: discovered.port,
-        expiresAt: pairing.expiresAt,
-      };
-      setState((current) => ({
-        ...current,
-        phase: "pairing",
-        host: discovered.host,
-        error: null,
-        pairingExpiresAt: pairing.expiresAt,
-      }));
+      await beginPairing(
+        discovered.host,
+        discovered.port,
+        discovered.info.instanceId,
+        null
+      );
     } catch (cause) {
       closeSocket();
       const message = cause instanceof Error ? cause.message : "Failed to connect.";
@@ -236,7 +278,7 @@ export function useCodexConnection() {
         pairingExpiresAt: null,
       }));
     }
-  }, [closeSocket, connectWithToken]);
+  }, [beginPairing, closeSocket, connectWithToken]);
 
   const submitPairingCode = useCallback(
     async (rawCode: string): Promise<boolean> => {
@@ -272,7 +314,11 @@ export function useCodexConnection() {
 
       try {
         const confirmed = await confirmPairing(pending.host, code, pending.port);
-        await saveConnection(pending.host, confirmed.token);
+        await saveConnection(
+          pending.host,
+          confirmed.token,
+          pending.instanceId
+        );
         const connected = await connectWithToken(pending.host, confirmed.token);
         if (!connected) {
           throw new Error("Paired successfully, but failed to read server status.");

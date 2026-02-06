@@ -22,5 +22,6 @@ npx codex-blocker --mobile
 - Auto-discovery over local Wi-Fi (`/mobile/discovery`)
 - Terminal-code pairing (`/mobile/pair/start` + `/mobile/pair/confirm`)
 - Realtime state updates from `/ws`
+- Secure token storage (expo-secure-store) + pinned server identity (`instanceId`)
 - Local notification toggle for Codex idle/resume transitions
 - Blocking mode toggle placeholder (full iOS Screen Time shielding requires dev build with native module)

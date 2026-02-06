@@ -57,6 +57,9 @@ importers:
       expo-notifications:
         specifier: ~55.0.5
         version: 55.0.5(expo@55.0.0-preview.9)(react-native@0.83.1(@babel/core@7.29.0)(@types/react@19.2.13)(react@19.2.0))(react@19.2.0)
+      expo-secure-store:
+        specifier: ~15.0.7
+        version: 15.0.8(expo@55.0.0-preview.9)
       react:
         specifier: 19.2.0
         version: 19.2.0
@@ -2203,6 +2206,11 @@ packages:
       expo: '*'
       react: '*'
       react-native: '*'
+
+  expo-secure-store@15.0.8:
+    resolution: {integrity: sha512-lHnzvRajBu4u+P99+0GEMijQMFCOYpWRO4dWsXSuMt77+THPIGjzNvVKrGSl6mMrLsfVaKL8BpwYZLGlgA+zAw==}
+    peerDependencies:
+      expo: '*'
 
   expo-server@55.0.3:
     resolution: {integrity: sha512-DeFRWvLb7pcxqrvDFK95Eujh/VFddRfmTGbcTcPVMhYl6om7eKYe8CgpfqIi2mK0rOnLHw7DPymmcPXXWuFbFw==}
@@ -6107,6 +6115,10 @@ snapshots:
       react-native: 0.83.1(@babel/core@7.29.0)(@types/react@19.2.13)(react@19.2.0)
     transitivePeerDependencies:
       - supports-color
+
+  expo-secure-store@15.0.8(expo@55.0.0-preview.9):
+    dependencies:
+      expo: 55.0.0-preview.9(@babel/core@7.29.0)(@expo/dom-webview@55.0.2)(react-native@0.83.1(@babel/core@7.29.0)(@types/react@19.2.13)(react@19.2.0))(react@19.2.0)
 
   expo-server@55.0.3: {}
 

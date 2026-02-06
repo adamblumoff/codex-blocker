@@ -1,13 +1,16 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as SecureStore from "expo-secure-store";
 import type { MobilePreferences } from "../types";
 
 const SERVER_HOST_KEY = "codexBlocker.serverHost";
 const SERVER_TOKEN_KEY = "codexBlocker.serverToken";
+const SERVER_INSTANCE_ID_KEY = "codexBlocker.serverInstanceId";
 const PREFERENCES_KEY = "codexBlocker.preferences";
 
 export type PersistedConnection = {
   host: string | null;
   token: string | null;
+  instanceId: string | null;
 };
 
 export const DEFAULT_PREFERENCES: MobilePreferences = {
@@ -15,21 +18,53 @@ export const DEFAULT_PREFERENCES: MobilePreferences = {
   blockingEnabled: false,
 };
 
+async function loadTokenWithMigration(): Promise<string | null> {
+  const secureToken = await SecureStore.getItemAsync(SERVER_TOKEN_KEY);
+  if (secureToken) {
+    return secureToken;
+  }
+
+  const legacyToken = await AsyncStorage.getItem(SERVER_TOKEN_KEY);
+  if (!legacyToken) {
+    return null;
+  }
+
+  await SecureStore.setItemAsync(SERVER_TOKEN_KEY, legacyToken);
+  await AsyncStorage.removeItem(SERVER_TOKEN_KEY);
+  return legacyToken;
+}
+
 export async function loadConnection(): Promise<PersistedConnection> {
-  const [host, token] = await Promise.all([
+  const [host, instanceId, token] = await Promise.all([
     AsyncStorage.getItem(SERVER_HOST_KEY),
-    AsyncStorage.getItem(SERVER_TOKEN_KEY),
+    AsyncStorage.getItem(SERVER_INSTANCE_ID_KEY),
+    loadTokenWithMigration(),
   ]);
   return {
     host,
     token,
+    instanceId,
   };
 }
 
-export async function saveConnection(host: string, token: string): Promise<void> {
+export async function saveConnection(
+  host: string,
+  token: string,
+  instanceId: string
+): Promise<void> {
   await Promise.all([
     AsyncStorage.setItem(SERVER_HOST_KEY, host),
-    AsyncStorage.setItem(SERVER_TOKEN_KEY, token),
+    AsyncStorage.setItem(SERVER_INSTANCE_ID_KEY, instanceId),
+    SecureStore.setItemAsync(SERVER_TOKEN_KEY, token),
+  ]);
+}
+
+export async function clearConnection(): Promise<void> {
+  await Promise.all([
+    AsyncStorage.removeItem(SERVER_HOST_KEY),
+    AsyncStorage.removeItem(SERVER_INSTANCE_ID_KEY),
+    AsyncStorage.removeItem(SERVER_TOKEN_KEY),
+    SecureStore.deleteItemAsync(SERVER_TOKEN_KEY),
   ]);
 }
 
