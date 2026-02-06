@@ -22,7 +22,9 @@ Block distracting websites unless Codex is actively running inference.
 
 1. **Codex session logs** are tailed by the server to detect activity
 2. **Blocker server** tracks Codex turns (working starts on your prompt, ends on final reply)
-3. **Chrome extension** blocks configured sites when no session is actively working
+3. **Clients** subscribe to server state:
+   - Chrome extension blocks configured websites
+   - iOS Expo app receives state over LAN/Wi-Fi for notifications and mobile mode controls
 
 ## Quick Start
 
@@ -54,11 +56,32 @@ You can also mute blocking, enable always-blocking, pause media while blocked, o
 
 Default blocked sites: `x.com`, `youtube.com`
 
+### 4. Run the iOS app (Expo Go)
+
+```bash
+# Start server in mobile/LAN mode
+npx codex-blocker --mobile
+
+# In another terminal
+pnpm --filter @codex-blocker/mobile dev
+```
+
+Then open Expo Go on iPhone and connect to the project.
+
 ## Server CLI
 
 ```bash
 # Start on custom port
 npx codex-blocker --port 9000
+
+# Enable mobile mode (LAN bind + mDNS + pairing endpoints)
+npx codex-blocker --mobile
+
+# Override bind host
+npx codex-blocker --mobile --bind 0.0.0.0
+
+# Set mobile discovery name
+npx codex-blocker --mobile --mobile-name "Adam's Codex Blocker"
 
 # Show setup info
 npx codex-blocker --setup
@@ -83,12 +106,15 @@ npx codex-blocker --version
 - **Always blocking** — Force blocking regardless of Codex activity
 - **Pause media** — Auto-pause audio/video while blocked and resume on unblock
 - **Works offline** — Blocks everything when server isn't running (safety default)
+- **Mobile LAN mode** — Optional pairing/discovery endpoints for iPhone app connections
+- **Expo iOS app (TypeScript)** — Realtime status, notifications toggle, and mobile blocking-mode controls
 
 ## Requirements
 
 - Node.js 18+
 - Chrome (or Chromium-based browser)
 - Codex CLI
+- iPhone + Expo Go (for mobile app development)
 
 ## Development
 
@@ -104,6 +130,12 @@ pnpm build
 # Development mode
 pnpm dev
 
+# Mobile app only (Expo)
+pnpm dev:mobile
+
+# All workspace dev scripts
+pnpm dev:all
+
 # Run tests
 pnpm test
 
@@ -111,12 +143,18 @@ pnpm test
 pnpm test:coverage
 ```
 
+## Mobile Docs
+
+- Connectivity and troubleshooting: `docs/mobile-connectivity.md`
+- Zero-admin setup roadmap: `docs/mobile-zero-admin-ux-plan.md`
+
 ### Project Structure
 
 ```
 packages/
 ├── server/      # Node.js server + CLI (published to npm)
 ├── extension/   # Chrome extension (Manifest V3)
+├── mobile/      # Expo React Native iOS app (TypeScript)
 └── shared/      # Shared TypeScript types
 ```
 

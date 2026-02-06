@@ -36,13 +36,26 @@ Options:
   --setup     Show Codex setup info
   --remove    Remove Codex setup (no-op)
   --port      Server port (default: ${DEFAULT_PORT})
+  --mobile    Enable mobile/LAN mode (binds to 0.0.0.0 by default)
+  --bind      Bind host (default: 127.0.0.1 or 0.0.0.0 with --mobile)
+  --mobile-name  Friendly mobile discovery name
   --version   Show version
   --help      Show this help message
 
 Examples:
   npx codex-blocker            # Start the server
   npx codex-blocker --port 9000
+  npx codex-blocker --mobile
+  npx codex-blocker --mobile --bind 0.0.0.0
 `);
+}
+
+function getStringFlag(flag: string): string | null {
+  const index = args.indexOf(flag);
+  if (index === -1) return null;
+  const value = args[index + 1];
+  if (!value || value.startsWith("--")) return null;
+  return value;
 }
 
 async function main(): Promise<void> {
@@ -68,9 +81,9 @@ async function main(): Promise<void> {
 
   // Parse port
   let port = DEFAULT_PORT;
-  const portIndex = args.indexOf("--port");
-  if (portIndex !== -1 && args[portIndex + 1]) {
-    const parsed = parseInt(args[portIndex + 1], 10);
+  const portArg = getStringFlag("--port");
+  if (portArg) {
+    const parsed = parseInt(portArg, 10);
     if (!isNaN(parsed) && parsed > 0 && parsed < 65536) {
       port = parsed;
     } else {
@@ -78,6 +91,10 @@ async function main(): Promise<void> {
       process.exit(1);
     }
   }
+
+  const mobile = args.includes("--mobile");
+  const bindHost = getStringFlag("--bind") ?? (mobile ? "0.0.0.0" : "127.0.0.1");
+  const mobileServiceName = getStringFlag("--mobile-name") ?? "Codex Blocker";
 
   if (!isCodexAvailable()) {
     console.log("Codex sessions directory not found yet.");
@@ -87,7 +104,11 @@ async function main(): Promise<void> {
     }
   }
 
-  startServer(port);
+  startServer(port, {
+    mobile,
+    bindHost,
+    mobileServiceName,
+  });
 }
 
 main();

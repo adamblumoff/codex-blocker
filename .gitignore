@@ -31,3 +31,7 @@ coverage/
 
 # Misc
 *.local
+.expo/
+.expo-shared/
+packages/mobile/.expo/
+packages/mobile/.expo-shared/

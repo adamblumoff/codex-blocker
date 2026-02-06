@@ -1,0 +1,17 @@
+{
+  "expo": {
+    "name": "Codex Blocker",
+    "slug": "codex-blocker-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.codexblocker.mobile",
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "Codex Blocker discovers your local Codex Blocker server over Wi-Fi."
+      }
+    }
+  }
+}

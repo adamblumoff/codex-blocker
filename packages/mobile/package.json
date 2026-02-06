@@ -1,0 +1,25 @@
+{
+  "name": "@codex-blocker/mobile",
+  "version": "0.0.1",
+  "private": true,
+  "main": "index.ts",
+  "scripts": {
+    "build": "tsc --noEmit",
+    "dev": "expo start",
+    "ios": "expo start --ios",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@codex-blocker/shared": "workspace:*",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "expo": "55.0.0-preview.9",
+    "expo-network": "~55.0.4",
+    "expo-notifications": "~55.0.5",
+    "react": "19.2.0",
+    "react-native": "0.83.1"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.0",
+    "typescript": "^5.9.3"
+  }
+}

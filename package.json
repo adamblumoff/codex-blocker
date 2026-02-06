@@ -6,7 +6,9 @@
   ],
   "scripts": {
     "build": "pnpm -r build",
-    "dev": "pnpm -r --parallel dev",
+    "dev": "pnpm --parallel --filter codex-blocker --filter @codex-blocker/extension dev",
+    "dev:all": "pnpm -r --parallel dev",
+    "dev:mobile": "pnpm --filter @codex-blocker/mobile dev -- --tunnel --clear",
     "typecheck": "pnpm -r typecheck",
     "test": "vitest run",
     "test:watch": "vitest",

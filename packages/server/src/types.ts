@@ -29,7 +29,31 @@ export type ServerMessage =
 // WebSocket messages from extension to server
 export type ClientMessage = { type: "ping" } | { type: "subscribe" };
 
+export interface MobileDiscoveryResponse {
+  name: string;
+  instanceId: string;
+  port: number;
+  pairingRequired: boolean;
+  pairingExpiresAt: number | null;
+}
+
+export interface MobilePairStartResponse {
+  code: string;
+  expiresAt: number;
+}
+
+export interface MobilePairConfirmRequest {
+  code: string;
+}
+
+export interface MobilePairConfirmResponse {
+  token: string;
+  statusUrl: string;
+  wsUrl: string;
+}
+
 // Server configuration
 export const DEFAULT_PORT = 8765;
 export const SESSION_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
 export const CODEX_SESSIONS_SCAN_INTERVAL_MS = 2_000; // 2 seconds
+export const MOBILE_PAIRING_TTL_MS = 2 * 60 * 1000; // 2 minutes

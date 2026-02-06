@@ -3,18 +3,35 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { homedir } from "os";
 import { dirname, join } from "path";
 import { WebSocketServer, WebSocket } from "ws";
-import type { ClientMessage } from "./types.js";
+import type {
+  ClientMessage,
+  MobileDiscoveryResponse,
+  MobilePairConfirmRequest,
+  MobilePairConfirmResponse,
+  MobilePairStartResponse,
+} from "./types.js";
 import { DEFAULT_PORT } from "./types.js";
 import { SessionState, state as defaultState } from "./state.js";
 import { CodexSessionWatcher } from "./codex.js";
+import {
+  MobilePairingManager,
+  createServerInstanceId,
+  createServerToken,
+} from "./mobile.js";
+import { publishMobileService, type MdnsServiceHandle } from "./mdns.js";
 
 const DEFAULT_TOKEN_DIR = join(homedir(), ".codex-blocker");
 const DEFAULT_TOKEN_PATH = join(DEFAULT_TOKEN_DIR, "token");
 const RATE_WINDOW_MS = 60_000;
 const RATE_LIMIT = 60;
 const MAX_WS_CONNECTIONS_PER_IP = 3;
+const MOBILE_SERVICE_TYPE = "codex-blocker";
 
+const INVALID_JSON_SENTINEL = Symbol("invalid-json");
+
+type JsonBody = Record<string, unknown> | typeof INVALID_JSON_SENTINEL;
 type RateState = { count: number; resetAt: number };
+
 const rateByIp = new Map<string, RateState>();
 const wsConnectionsByIp = new Map<string, number>();
 
@@ -72,12 +89,58 @@ function sendJson(res: ServerResponse, data: unknown, status = 200): void {
   res.end(JSON.stringify(data));
 }
 
+function normalizeListenHost(bindHost: string): string {
+  if (bindHost === "0.0.0.0") {
+    return "127.0.0.1";
+  }
+  return bindHost;
+}
+
+async function readJsonBody(req: IncomingMessage, maxBytes = 8_192): Promise<JsonBody> {
+  const chunks: Buffer[] = [];
+  let totalBytes = 0;
+
+  for await (const chunk of req) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    totalBytes += buffer.byteLength;
+    if (totalBytes > maxBytes) {
+      return INVALID_JSON_SENTINEL;
+    }
+    chunks.push(buffer);
+  }
+
+  if (chunks.length === 0) {
+    return {};
+  }
+
+  try {
+    const parsed = JSON.parse(Buffer.concat(chunks).toString("utf-8")) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return INVALID_JSON_SENTINEL;
+    }
+    return parsed as Record<string, unknown>;
+  } catch {
+    return INVALID_JSON_SENTINEL;
+  }
+}
+
+function getResponseHost(req: IncomingMessage, bindHost: string, port: number): string {
+  if (req.headers.host) {
+    return req.headers.host;
+  }
+  return `${normalizeListenHost(bindHost)}:${port}`;
+}
+
 export type ServerOptions = {
   sessionsDir?: string;
   startWatcher?: boolean;
   tokenPath?: string;
   state?: SessionState;
   log?: boolean;
+  bindHost?: string;
+  mobile?: boolean;
+  mobileServiceName?: string;
+  publishMdns?: boolean;
 };
 
 export type ServerHandle = {
@@ -94,7 +157,24 @@ export function startServer(
   const tokenPath = options?.tokenPath ?? DEFAULT_TOKEN_PATH;
   const startWatcher = options?.startWatcher ?? true;
   const logBanner = options?.log ?? true;
+  const mobileEnabled = options?.mobile ?? false;
+  const bindHost = options?.bindHost ?? (mobileEnabled ? "0.0.0.0" : "127.0.0.1");
+  const mobileServiceName = options?.mobileServiceName ?? "Codex Blocker";
+  const publishMdns = options?.publishMdns ?? mobileEnabled;
+  const mobileInstanceId = createServerInstanceId();
+
   let authToken = loadToken(tokenPath);
+  let activePort = port;
+  let mdnsService: MdnsServiceHandle | null = null;
+
+  const mobilePairing = mobileEnabled
+    ? new MobilePairingManager((message) => {
+        if (logBanner) {
+          console.log(message);
+        }
+      })
+    : null;
+
   const server = createServer(async (req, res) => {
     const clientIp = getClientIp(req);
     if (!checkRateLimit(clientIp)) {
@@ -102,10 +182,11 @@ export function startServer(
       return;
     }
 
-    const url = new URL(req.url || "/", `http://localhost:${port}`);
+    const url = new URL(req.url || "/", `http://localhost:${activePort}`);
     const origin = req.headers.origin;
-    const allowOrigin = isChromeExtensionOrigin(origin);
-    if (allowOrigin && origin) {
+    const allowExtensionOrigin = isChromeExtensionOrigin(origin);
+
+    if (allowExtensionOrigin && origin) {
       res.setHeader("Access-Control-Allow-Origin", origin);
       res.setHeader("Vary", "Origin");
       res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -116,9 +197,68 @@ export function startServer(
     }
 
     if (req.method === "OPTIONS") {
-      res.writeHead(allowOrigin ? 204 : 403);
+      res.writeHead(allowExtensionOrigin ? 204 : 403);
       res.end();
       return;
+    }
+
+    if (mobilePairing) {
+      if (req.method === "GET" && url.pathname === "/mobile/discovery") {
+        const pairingStatus = mobilePairing.getStatus();
+        const payload: MobileDiscoveryResponse = {
+          name: mobileServiceName,
+          instanceId: mobileInstanceId,
+          port: activePort,
+          pairingRequired: !authToken,
+          pairingExpiresAt: pairingStatus.expiresAt,
+        };
+        sendJson(res, payload);
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === "/mobile/pair/start") {
+        const pairingCode = mobilePairing.startPairing();
+        const payload: MobilePairStartResponse = {
+          code: pairingCode.code,
+          expiresAt: pairingCode.expiresAt,
+        };
+        sendJson(res, payload);
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === "/mobile/pair/confirm") {
+        const body = await readJsonBody(req);
+        if (body === INVALID_JSON_SENTINEL) {
+          sendJson(res, { error: "Invalid JSON" }, 400);
+          return;
+        }
+
+        const code = (body as Partial<MobilePairConfirmRequest>).code;
+        if (typeof code !== "string" || code.trim().length === 0) {
+          sendJson(res, { error: "Missing pairing code" }, 400);
+          return;
+        }
+
+        const confirmed = mobilePairing.confirmPairing(code);
+        if (!confirmed) {
+          sendJson(res, { error: "Invalid or expired pairing code" }, 401);
+          return;
+        }
+
+        if (!authToken) {
+          authToken = createServerToken();
+          saveToken(tokenPath, authToken);
+        }
+
+        const host = getResponseHost(req, bindHost, activePort);
+        const payload: MobilePairConfirmResponse = {
+          token: authToken,
+          statusUrl: `http://${host}/status`,
+          wsUrl: `ws://${host}/ws`,
+        };
+        sendJson(res, payload);
+        return;
+      }
     }
 
     const providedToken = readAuthToken(req, url);
@@ -127,7 +267,7 @@ export function startServer(
         sendJson(res, { error: "Unauthorized" }, 401);
         return;
       }
-    } else if (providedToken && allowOrigin) {
+    } else if (providedToken && allowExtensionOrigin) {
       authToken = providedToken;
       saveToken(tokenPath, providedToken);
     } else {
@@ -135,21 +275,18 @@ export function startServer(
       return;
     }
 
-    // Health check / status endpoint
     if (req.method === "GET" && url.pathname === "/status") {
       sendJson(res, stateInstance.getStatus());
       return;
     }
 
-    // 404 for unknown routes
     sendJson(res, { error: "Not found" }, 404);
   });
 
-  // WebSocket server for Chrome extension
   const wss = new WebSocketServer({ server, path: "/ws" });
 
   wss.on("connection", (ws: WebSocket, req) => {
-    const wsUrl = new URL(req.url || "", `http://localhost:${port}`);
+    const wsUrl = new URL(req.url || "", `http://localhost:${activePort}`);
     const providedToken = wsUrl.searchParams.get("token");
     const origin = req.headers.origin;
     const allowOrigin = isChromeExtensionOrigin(origin);
@@ -176,7 +313,6 @@ export function startServer(
 
     wsConnectionsByIp.set(clientIp, currentConnections + 1);
 
-    // Subscribe to state changes
     const unsubscribe = stateInstance.subscribe((message) => {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify(message));
@@ -186,7 +322,6 @@ export function startServer(
     ws.on("message", (data) => {
       try {
         const message = JSON.parse(data.toString()) as ClientMessage;
-
         if (message.type === "ping") {
           ws.send(JSON.stringify({ type: "pong" }));
         }
@@ -215,6 +350,7 @@ export function startServer(
   const codexWatcher = new CodexSessionWatcher(stateInstance, {
     sessionsDir: options?.sessionsDir,
   });
+
   if (startWatcher) {
     codexWatcher.start();
   }
@@ -230,24 +366,59 @@ export function startServer(
     close: async () => {
       stateInstance.destroy();
       codexWatcher.stop();
+      if (mdnsService) {
+        await mdnsService.stop();
+        mdnsService = null;
+      }
       await new Promise<void>((resolve) => wss.close(() => resolve()));
       await new Promise<void>((resolve) => server.close(() => resolve()));
     },
   };
 
-  server.listen(port, "127.0.0.1", () => {
+  server.listen(port, bindHost, () => {
     const address = server.address();
     const actualPort = typeof address === "object" && address ? address.port : port;
     handle.port = actualPort;
+    activePort = actualPort;
     resolveReady(actualPort);
+
+    if (mobilePairing) {
+      mobilePairing.startPairing();
+      if (publishMdns) {
+        try {
+          mdnsService = publishMobileService({
+            name: mobileServiceName,
+            type: MOBILE_SERVICE_TYPE,
+            port: actualPort,
+            instanceId: mobileInstanceId,
+          });
+        } catch (error) {
+          if (logBanner) {
+            console.warn(
+              `[Codex Blocker] Failed to publish mDNS service: ${
+                error instanceof Error ? error.message : String(error)
+              }`
+            );
+          }
+        }
+      }
+    }
+
     if (!logBanner) return;
+
+    const displayHost = bindHost === "0.0.0.0" ? "localhost" : bindHost;
+    const mobileLine = mobileEnabled
+      ? `│   Mobile:    enabled (${mobileServiceName})  │`
+      : "│   Mobile:    disabled                     │";
+
     console.log(`
 ┌─────────────────────────────────────┐
 │                                     │
 │   Codex Blocker Server              │
 │                                     │
-│   HTTP:      http://localhost:${actualPort}  │
-│   WebSocket: ws://localhost:${actualPort}/ws │
+│   HTTP:      http://${displayHost}:${actualPort}  │
+│   WebSocket: ws://${displayHost}:${actualPort}/ws │
+${mobileLine}
 │                                     │
 │   Watching Codex sessions...        │
 │                                     │
@@ -255,7 +426,6 @@ export function startServer(
 `);
   });
 
-  // Graceful shutdown - use once to prevent stacking handlers
   process.once("SIGINT", () => {
     if (logBanner) {
       console.log("\nShutting down...");

@@ -1,15 +1,16 @@
 export interface CodexActivity {
   sessionId: string;
   cwd?: string;
-  idleTimeoutMs: number;
+  idleTimeoutMs?: number;
 }
 
 // Session state tracked by server
 export interface Session {
   id: string;
-  status: "idle" | "working";
+  status: "idle" | "working" | "waiting_for_input";
   lastActivity: Date;
   lastSeen: Date;
+  waitingForInputSince?: Date;
   cwd?: string;
   idleTimeoutMs?: number;
 }
@@ -27,6 +28,29 @@ export type ServerMessage =
 
 // WebSocket messages from extension to server
 export type ClientMessage = { type: "ping" } | { type: "subscribe" };
+
+export interface MobileDiscoveryResponse {
+  name: string;
+  instanceId: string;
+  port: number;
+  pairingRequired: boolean;
+  pairingExpiresAt: number | null;
+}
+
+export interface MobilePairStartResponse {
+  code: string;
+  expiresAt: number;
+}
+
+export interface MobilePairConfirmRequest {
+  code: string;
+}
+
+export interface MobilePairConfirmResponse {
+  token: string;
+  statusUrl: string;
+  wsUrl: string;
+}
 
 // Extension storage schema
 export interface ExtensionState {
