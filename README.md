@@ -120,6 +120,32 @@ packages/
 └── shared/      # Shared TypeScript types
 ```
 
+## Release Automation
+
+Tag pushes (`v*`) trigger `.github/workflows/release.yml`.
+
+- Stable tags (for example `v0.1.2`) run:
+  - test/build/zip
+  - Chrome Web Store upload + publish
+  - npm publish (`codex-blocker`)
+  - GitHub release creation with `packages/extension/codex-blocker.zip`
+- Prerelease tags (`-alpha`) skip Chrome Web Store publish.
+
+Required GitHub repository secrets for Chrome Web Store automation:
+
+- `CWS_EXTENSION_ID`
+- `CWS_PUBLISHER_ID`
+- `CWS_CLIENT_ID`
+- `CWS_CLIENT_SECRET`
+- `CWS_REFRESH_TOKEN`
+
+Manual smoke tests (no tag required) can be run from Actions on `release.yml` using
+the `workflow_dispatch` trigger:
+
+- Default smoke run validates auth + fetches CWS status.
+- Optional upload smoke run (`cws_check_upload=true`) also builds/zips and uploads
+  the extension package, but does not publish it.
+
 ## Privacy
 
 - **No data collection** — All data stays on your machine

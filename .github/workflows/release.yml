@@ -4,6 +4,13 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      cws_check_upload:
+        description: "Also upload extension zip to CWS (no publish)"
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -11,6 +18,7 @@ permissions:
 
 jobs:
   release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -72,6 +80,195 @@ jobs:
 
       - name: Zip extension
         run: pnpm --filter @codex-blocker/extension zip
+
+      - name: Resolve Chrome Web Store publish gate
+        id: cws_gate
+        run: |
+          tag="${GITHUB_REF#refs/tags/v}"
+          if [[ "$tag" == *"-alpha"* ]]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping Chrome Web Store publish for prerelease tag: $tag"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "Chrome Web Store publish enabled for stable tag: $tag"
+          fi
+
+      - name: Validate Chrome Web Store secrets
+        if: steps.cws_gate.outputs.enabled == 'true'
+        env:
+          CWS_EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+          CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
+          CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+        run: |
+          missing=0
+          for var in CWS_EXTENSION_ID CWS_PUBLISHER_ID CWS_CLIENT_ID CWS_CLIENT_SECRET CWS_REFRESH_TOKEN; do
+            if [ -z "${!var}" ]; then
+              echo "Missing required secret: $var"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+
+      - name: Exchange Chrome Web Store access token
+        id: cws_token
+        if: steps.cws_gate.outputs.enabled == 'true'
+        env:
+          CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+        run: |
+          token_json="$(
+            curl -sS -f https://oauth2.googleapis.com/token \
+              -H "Content-Type: application/x-www-form-urlencoded" \
+              --data-urlencode "client_id=${CWS_CLIENT_ID}" \
+              --data-urlencode "client_secret=${CWS_CLIENT_SECRET}" \
+              --data-urlencode "refresh_token=${CWS_REFRESH_TOKEN}" \
+              --data-urlencode "grant_type=refresh_token"
+          )"
+          token="$(echo "$token_json" | jq -r '.access_token // empty')"
+          if [ -z "$token" ]; then
+            echo "Failed to resolve access token from Google OAuth response"
+            echo "$token_json"
+            exit 1
+          fi
+          echo "::add-mask::$token"
+          echo "access_token=$token" >> "$GITHUB_OUTPUT"
+
+      - name: Upload extension to Chrome Web Store
+        if: steps.cws_gate.outputs.enabled == 'true'
+        env:
+          CWS_ACCESS_TOKEN: ${{ steps.cws_token.outputs.access_token }}
+          CWS_EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+          CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
+        run: |
+          item_name="publishers/${CWS_PUBLISHER_ID}/items/${CWS_EXTENSION_ID}"
+          upload_url="https://chromewebstore.googleapis.com/upload/v2/${item_name}:upload"
+          status_url="https://chromewebstore.googleapis.com/v2/${item_name}:fetchStatus"
+
+          upload_json="$(
+            curl -sS -f -X POST "$upload_url" \
+              -H "Authorization: Bearer ${CWS_ACCESS_TOKEN}" \
+              -H "Content-Type: application/zip" \
+              --data-binary "@packages/extension/codex-blocker.zip"
+          )"
+
+          upload_state="$(echo "$upload_json" | jq -r '.uploadState // empty')"
+          if [ -z "$upload_state" ]; then
+            echo "Upload response did not include uploadState"
+            echo "$upload_json"
+            exit 1
+          fi
+
+          case "$upload_state" in
+            SUCCEEDED)
+              echo "Extension upload succeeded."
+              ;;
+            IN_PROGRESS|UPLOAD_IN_PROGRESS)
+              echo "Upload in progress, polling fetchStatus..."
+              for attempt in $(seq 1 30); do
+                sleep 10
+                status_json="$(
+                  curl -sS -f "$status_url" \
+                    -H "Authorization: Bearer ${CWS_ACCESS_TOKEN}"
+                )"
+                async_state="$(echo "$status_json" | jq -r '.lastAsyncUploadState // empty')"
+                case "$async_state" in
+                  SUCCEEDED)
+                    echo "Async upload completed."
+                    upload_state="SUCCEEDED"
+                    break
+                    ;;
+                  IN_PROGRESS|UPLOAD_IN_PROGRESS|"")
+                    echo "Attempt $attempt/30: upload still in progress."
+                    ;;
+                  FAILED|NOT_FOUND|UPLOAD_STATE_UNSPECIFIED)
+                    echo "Async upload failed with state: $async_state"
+                    echo "$status_json"
+                    exit 1
+                    ;;
+                  *)
+                    echo "Unexpected async upload state: $async_state"
+                    echo "$status_json"
+                    exit 1
+                    ;;
+                esac
+              done
+
+              if [ "$upload_state" != "SUCCEEDED" ]; then
+                echo "Upload did not complete within polling window"
+                exit 1
+              fi
+              ;;
+            FAILED|NOT_FOUND|UPLOAD_STATE_UNSPECIFIED)
+              echo "Upload failed with state: $upload_state"
+              echo "$upload_json"
+              exit 1
+              ;;
+            *)
+              echo "Unexpected upload state: $upload_state"
+              echo "$upload_json"
+              exit 1
+              ;;
+          esac
+
+      - name: Publish extension to Chrome Web Store
+        if: steps.cws_gate.outputs.enabled == 'true'
+        env:
+          CWS_ACCESS_TOKEN: ${{ steps.cws_token.outputs.access_token }}
+          CWS_EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+          CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
+        run: |
+          item_name="publishers/${CWS_PUBLISHER_ID}/items/${CWS_EXTENSION_ID}"
+          publish_url="https://chromewebstore.googleapis.com/v2/${item_name}:publish"
+
+          publish_json="$(
+            curl -sS -f -X POST "$publish_url" \
+              -H "Authorization: Bearer ${CWS_ACCESS_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d '{"publishType":"DEFAULT_PUBLISH"}'
+          )"
+
+          item_state="$(echo "$publish_json" | jq -r '.state // empty')"
+          if [ -z "$item_state" ]; then
+            echo "Publish response did not include state"
+            echo "$publish_json"
+            exit 1
+          fi
+
+          case "$item_state" in
+            PUBLISHED|PENDING_REVIEW|STAGED|PUBLISHED_TO_TESTERS)
+              echo "Publish accepted with state: $item_state"
+              ;;
+            CANCELLED|REJECTED|ITEM_STATE_UNSPECIFIED)
+              echo "Publish failed with state: $item_state"
+              echo "$publish_json"
+              exit 1
+              ;;
+            *)
+              echo "Unexpected publish state: $item_state"
+              echo "$publish_json"
+              exit 1
+              ;;
+          esac
+
+      - name: Fetch Chrome Web Store status snapshot
+        if: steps.cws_gate.outputs.enabled == 'true'
+        env:
+          CWS_ACCESS_TOKEN: ${{ steps.cws_token.outputs.access_token }}
+          CWS_EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+          CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
+        run: |
+          item_name="publishers/${CWS_PUBLISHER_ID}/items/${CWS_EXTENSION_ID}"
+          status_url="https://chromewebstore.googleapis.com/v2/${item_name}:fetchStatus"
+          status_json="$(
+            curl -sS -f "$status_url" \
+              -H "Authorization: Bearer ${CWS_ACCESS_TOKEN}"
+          )"
+          echo "$status_json" | jq '{state, lastAsyncUploadState, itemError, warnings}'
 
       - name: Resolve npm tag
         id: npm_tag
@@ -139,3 +336,178 @@ jobs:
           generate_release_notes: true
           prerelease: ${{ steps.rel_flags.outputs.prerelease }}
           make_latest: ${{ steps.rel_flags.outputs.make_latest }}
+
+  cws-smoke-test:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate Chrome Web Store secrets
+        env:
+          CWS_EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+          CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
+          CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+        run: |
+          missing=0
+          for var in CWS_EXTENSION_ID CWS_PUBLISHER_ID CWS_CLIENT_ID CWS_CLIENT_SECRET CWS_REFRESH_TOKEN; do
+            if [ -z "${!var}" ]; then
+              echo "Missing required secret: $var"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+
+      - name: Exchange Chrome Web Store access token
+        id: cws_token
+        env:
+          CWS_CLIENT_ID: ${{ secrets.CWS_CLIENT_ID }}
+          CWS_CLIENT_SECRET: ${{ secrets.CWS_CLIENT_SECRET }}
+          CWS_REFRESH_TOKEN: ${{ secrets.CWS_REFRESH_TOKEN }}
+        run: |
+          token_json="$(
+            curl -sS -f https://oauth2.googleapis.com/token \
+              -H "Content-Type: application/x-www-form-urlencoded" \
+              --data-urlencode "client_id=${CWS_CLIENT_ID}" \
+              --data-urlencode "client_secret=${CWS_CLIENT_SECRET}" \
+              --data-urlencode "refresh_token=${CWS_REFRESH_TOKEN}" \
+              --data-urlencode "grant_type=refresh_token"
+          )"
+          token="$(echo "$token_json" | jq -r '.access_token // empty')"
+          if [ -z "$token" ]; then
+            echo "Failed to resolve access token from Google OAuth response"
+            echo "$token_json"
+            exit 1
+          fi
+          echo "::add-mask::$token"
+          echo "access_token=$token" >> "$GITHUB_OUTPUT"
+
+      - name: Fetch Chrome Web Store status snapshot
+        env:
+          CWS_ACCESS_TOKEN: ${{ steps.cws_token.outputs.access_token }}
+          CWS_EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+          CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
+        run: |
+          item_name="publishers/${CWS_PUBLISHER_ID}/items/${CWS_EXTENSION_ID}"
+          status_url="https://chromewebstore.googleapis.com/v2/${item_name}:fetchStatus"
+          status_json="$(
+            curl -sS -f "$status_url" \
+              -H "Authorization: Bearer ${CWS_ACCESS_TOKEN}"
+          )"
+          echo "$status_json" | jq '{state, lastAsyncUploadState, itemError, warnings}'
+
+      - name: Checkout (for optional upload smoke)
+        if: github.event.inputs.cws_check_upload == 'true'
+        uses: actions/checkout@v4
+
+      - name: Setup Node (for optional upload smoke)
+        if: github.event.inputs.cws_check_upload == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup pnpm (for optional upload smoke)
+        if: github.event.inputs.cws_check_upload == 'true'
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
+
+      - name: Install dependencies (for optional upload smoke)
+        if: github.event.inputs.cws_check_upload == 'true'
+        run: pnpm install
+
+      - name: Build extension (for optional upload smoke)
+        if: github.event.inputs.cws_check_upload == 'true'
+        run: pnpm --filter @codex-blocker/extension build
+
+      - name: Zip extension (for optional upload smoke)
+        if: github.event.inputs.cws_check_upload == 'true'
+        run: pnpm --filter @codex-blocker/extension zip
+
+      - name: Upload extension to Chrome Web Store (optional smoke)
+        if: github.event.inputs.cws_check_upload == 'true'
+        env:
+          CWS_ACCESS_TOKEN: ${{ steps.cws_token.outputs.access_token }}
+          CWS_EXTENSION_ID: ${{ secrets.CWS_EXTENSION_ID }}
+          CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
+        run: |
+          item_name="publishers/${CWS_PUBLISHER_ID}/items/${CWS_EXTENSION_ID}"
+          upload_url="https://chromewebstore.googleapis.com/upload/v2/${item_name}:upload"
+          status_url="https://chromewebstore.googleapis.com/v2/${item_name}:fetchStatus"
+
+          upload_json="$(
+            curl -sS -f -X POST "$upload_url" \
+              -H "Authorization: Bearer ${CWS_ACCESS_TOKEN}" \
+              -H "Content-Type: application/zip" \
+              --data-binary "@packages/extension/codex-blocker.zip"
+          )"
+
+          upload_state="$(echo "$upload_json" | jq -r '.uploadState // empty')"
+          if [ -z "$upload_state" ]; then
+            echo "Upload response did not include uploadState"
+            echo "$upload_json"
+            exit 1
+          fi
+
+          case "$upload_state" in
+            SUCCEEDED)
+              echo "Extension upload smoke test succeeded."
+              ;;
+            IN_PROGRESS|UPLOAD_IN_PROGRESS)
+              echo "Upload in progress, polling fetchStatus..."
+              for attempt in $(seq 1 30); do
+                sleep 10
+                status_json="$(
+                  curl -sS -f "$status_url" \
+                    -H "Authorization: Bearer ${CWS_ACCESS_TOKEN}"
+                )"
+                async_state="$(echo "$status_json" | jq -r '.lastAsyncUploadState // empty')"
+                case "$async_state" in
+                  SUCCEEDED)
+                    echo "Async upload completed."
+                    upload_state="SUCCEEDED"
+                    break
+                    ;;
+                  IN_PROGRESS|UPLOAD_IN_PROGRESS|"")
+                    echo "Attempt $attempt/30: upload still in progress."
+                    ;;
+                  FAILED|NOT_FOUND|UPLOAD_STATE_UNSPECIFIED)
+                    echo "Async upload failed with state: $async_state"
+                    echo "$status_json"
+                    exit 1
+                    ;;
+                  *)
+                    echo "Unexpected async upload state: $async_state"
+                    echo "$status_json"
+                    exit 1
+                    ;;
+                esac
+              done
+
+              if [ "$upload_state" != "SUCCEEDED" ]; then
+                echo "Upload did not complete within polling window"
+                exit 1
+              fi
+              ;;
+            FAILED|NOT_FOUND|UPLOAD_STATE_UNSPECIFIED)
+              echo "Upload failed with state: $upload_state"
+              echo "$upload_json"
+              exit 1
+              ;;
+            *)
+              echo "Unexpected upload state: $upload_state"
+              echo "$upload_json"
+              exit 1
+              ;;
+          esac
+
+      - name: Smoke test summary
+        run: |
+          if [ "${{ github.event.inputs.cws_check_upload }}" = "true" ]; then
+            echo "CWS smoke test passed (auth + status + upload)."
+          else
+            echo "CWS smoke test passed (auth + status only)."
+          fi
