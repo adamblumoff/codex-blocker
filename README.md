@@ -83,6 +83,12 @@ npx codex-blocker --mobile --bind 0.0.0.0
 # Set mobile discovery name
 npx codex-blocker --mobile --mobile-name "Adam's Codex Blocker"
 
+# Diagnose local mobile networking (Windows/WSL)
+npx codex-blocker mobile:doctor
+
+# Auto-fix Windows portproxy + firewall (prompts for elevation if needed)
+npx codex-blocker mobile:fix
+
 # Show setup info
 npx codex-blocker --setup
 

@@ -38,6 +38,12 @@ npx codex-blocker --mobile --bind 0.0.0.0
 # Set mobile discovery name
 npx codex-blocker --mobile --mobile-name "Codex Blocker"
 
+# Diagnose local mobile networking
+npx codex-blocker mobile:doctor
+
+# Auto-fix Windows portproxy + firewall setup
+npx codex-blocker mobile:fix
+
 # Remove setup (no-op)
 npx codex-blocker --remove
 

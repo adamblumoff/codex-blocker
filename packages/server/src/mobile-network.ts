@@ -1,0 +1,408 @@
+import { execFile } from "child_process";
+import { existsSync } from "fs";
+import { promisify } from "util";
+
+const execFileAsync = promisify(execFile);
+const WSL_POWERSHELL_PATH = "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe";
+
+type CommandResult = {
+  code: number;
+  stdout: string;
+  stderr: string;
+};
+
+type WindowsDiagnostics = {
+  profileName: string | null;
+  interfaceAlias: string | null;
+  networkCategory: "Public" | "Private" | "DomainAuthenticated" | "Unknown";
+  wifiIp: string | null;
+  hasPortProxy: boolean;
+  hasPrivateRule: boolean;
+  hasPublicRule: boolean;
+  localhostReachable: boolean;
+  lanReachable: boolean;
+};
+
+export type DoctorReport = {
+  ok: boolean;
+  checks: Array<{ name: string; ok: boolean; details: string }>;
+  recommendations: string[];
+};
+
+export type WindowsDoctorAssessment = {
+  checks: Array<{ name: string; ok: boolean; details: string }>;
+  recommendations: string[];
+  ok: boolean;
+};
+
+function detectWsl(): boolean {
+  if (process.platform !== "linux") return false;
+  return Boolean(process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP);
+}
+
+function getPowerShellExecutable(): string | null {
+  if (process.platform === "win32") {
+    return "powershell.exe";
+  }
+
+  if (detectWsl() && existsSync(WSL_POWERSHELL_PATH)) {
+    return WSL_POWERSHELL_PATH;
+  }
+
+  return null;
+}
+
+async function runCommand(command: string, args: string[]): Promise<CommandResult> {
+  try {
+    const { stdout, stderr } = await execFileAsync(command, args, {
+      maxBuffer: 1024 * 1024,
+    });
+    return {
+      code: 0,
+      stdout,
+      stderr,
+    };
+  } catch (error) {
+    const failure = error as NodeJS.ErrnoException & {
+      stdout?: string;
+      stderr?: string;
+      code?: number | string;
+    };
+    return {
+      code: typeof failure.code === "number" ? failure.code : 1,
+      stdout: failure.stdout ?? "",
+      stderr: failure.stderr ?? failure.message,
+    };
+  }
+}
+
+async function checkDiscovery(url: string): Promise<{ ok: boolean; details: string }> {
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(2_000),
+    });
+    if (!response.ok) {
+      return {
+        ok: false,
+        details: `${response.status} ${response.statusText}`,
+      };
+    }
+    return {
+      ok: true,
+      details: "reachable",
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      ok: false,
+      details: message,
+    };
+  }
+}
+
+function parseWindowsDiagnostics(rawJson: string): WindowsDiagnostics | null {
+  try {
+    const data = JSON.parse(rawJson) as Partial<WindowsDiagnostics>;
+    return {
+      profileName: typeof data.profileName === "string" ? data.profileName : null,
+      interfaceAlias:
+        typeof data.interfaceAlias === "string" ? data.interfaceAlias : null,
+      networkCategory:
+        data.networkCategory === "Public" ||
+        data.networkCategory === "Private" ||
+        data.networkCategory === "DomainAuthenticated"
+          ? data.networkCategory
+          : "Unknown",
+      wifiIp: typeof data.wifiIp === "string" ? data.wifiIp : null,
+      hasPortProxy: Boolean(data.hasPortProxy),
+      hasPrivateRule: Boolean(data.hasPrivateRule),
+      hasPublicRule: Boolean(data.hasPublicRule),
+      localhostReachable: Boolean(data.localhostReachable),
+      lanReachable: Boolean(data.lanReachable),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function toPowerShellEncodedCommand(script: string): string {
+  return Buffer.from(script, "utf16le").toString("base64");
+}
+
+function buildWindowsDoctorScript(port: number): string {
+  return `
+$ErrorActionPreference = 'SilentlyContinue'
+$port = ${port}
+
+$profile = Get-NetConnectionProfile | Where-Object { $_.IPv4Connectivity -ne 'Disconnected' } | Select-Object -First 1
+$wifiIp = $null
+if ($profile) {
+  $wifiIp = Get-NetIPAddress -AddressFamily IPv4 |
+    Where-Object { $_.InterfaceAlias -eq $profile.InterfaceAlias -and $_.IPAddress -notlike '169.254*' } |
+    Select-Object -First 1 -ExpandProperty IPAddress
+}
+
+$proxyTable = netsh interface portproxy show v4tov4 | Out-String
+$proxyPattern = "0\\.0\\.0\\.0\\s+$port\\s+127\\.0\\.0\\.1\\s+$port"
+$hasPortProxy = [regex]::IsMatch($proxyTable, $proxyPattern)
+
+$privateRule = Get-NetFirewallRule -DisplayName "Codex Blocker $port Private LocalSubnet" -ErrorAction SilentlyContinue
+$publicRule = Get-NetFirewallRule -DisplayName "Codex Blocker $port Public LocalSubnet" -ErrorAction SilentlyContinue
+
+$localhostReachable = $false
+try {
+  Invoke-RestMethod -Uri ("http://127.0.0.1:" + $port + "/mobile/discovery") -Method Get -TimeoutSec 2 | Out-Null
+  $localhostReachable = $true
+} catch {}
+
+$lanReachable = $false
+if ($wifiIp) {
+  try {
+    Invoke-RestMethod -Uri ("http://" + $wifiIp + ":" + $port + "/mobile/discovery") -Method Get -TimeoutSec 2 | Out-Null
+    $lanReachable = $true
+  } catch {}
+}
+
+[pscustomobject]@{
+  profileName = if ($profile) { $profile.Name } else { $null }
+  interfaceAlias = if ($profile) { $profile.InterfaceAlias } else { $null }
+  networkCategory = if ($profile) { [string]$profile.NetworkCategory } else { "Unknown" }
+  wifiIp = $wifiIp
+  hasPortProxy = [bool]$hasPortProxy
+  hasPrivateRule = [bool]$privateRule
+  hasPublicRule = [bool]$publicRule
+  localhostReachable = $localhostReachable
+  lanReachable = $lanReachable
+} | ConvertTo-Json -Compress
+`.trim();
+}
+
+function buildWindowsFixScript(port: number): string {
+  const elevatedCommands = `
+$ErrorActionPreference = 'Stop'
+$port = ${port}
+
+netsh interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport=$port 2>$null | Out-Null
+netsh interface portproxy delete v4tov4 listenaddress=127.0.0.1 listenport=$port 2>$null | Out-Null
+netsh interface portproxy add v4tov4 listenaddress=0.0.0.0 listenport=$port connectaddress=127.0.0.1 connectport=$port
+
+foreach ($profile in @('Private', 'Public')) {
+  $ruleName = "Codex Blocker $port $profile LocalSubnet"
+  if (Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue) {
+    Remove-NetFirewallRule -DisplayName $ruleName | Out-Null
+  }
+
+  New-NetFirewallRule -DisplayName $ruleName -Direction Inbound -Action Allow -Protocol TCP -LocalPort $port -Profile $profile -RemoteAddress LocalSubnet | Out-Null
+}
+
+Write-Output "Configured portproxy + firewall for port $port"
+netsh interface portproxy show v4tov4
+`.trim();
+
+  const encoded = toPowerShellEncodedCommand(elevatedCommands);
+
+  return `
+$ErrorActionPreference = 'Stop'
+$isAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+if (-not $isAdmin) {
+  $proc = Start-Process -FilePath "powershell.exe" -Verb RunAs -ArgumentList "-NoProfile -ExecutionPolicy Bypass -EncodedCommand ${encoded}" -Wait -PassThru
+  exit $proc.ExitCode
+}
+
+${elevatedCommands}
+`.trim();
+}
+
+async function runPowerShellScript(
+  powershellExe: string,
+  script: string
+): Promise<CommandResult> {
+  return runCommand(powershellExe, [
+    "-NoProfile",
+    "-ExecutionPolicy",
+    "Bypass",
+    "-Command",
+    script,
+  ]);
+}
+
+export function assessWindowsDiagnostics(
+  diagnostics: WindowsDiagnostics,
+  port: number
+): WindowsDoctorAssessment {
+  const checks: Array<{ name: string; ok: boolean; details: string }> = [];
+
+  checks.push({
+    name: "Port proxy (0.0.0.0 -> 127.0.0.1)",
+    ok: diagnostics.hasPortProxy,
+    details: diagnostics.hasPortProxy
+      ? `configured for TCP ${port}`
+      : `missing for TCP ${port}`,
+  });
+
+  const category = diagnostics.networkCategory;
+  const profileRuleOk =
+    category === "Public"
+      ? diagnostics.hasPublicRule
+      : category === "Private"
+        ? diagnostics.hasPrivateRule
+        : diagnostics.hasPrivateRule || diagnostics.hasPublicRule;
+
+  checks.push({
+    name: `Firewall rule for ${category} profile`,
+    ok: profileRuleOk,
+    details: `private=${diagnostics.hasPrivateRule}, public=${diagnostics.hasPublicRule}`,
+  });
+
+  checks.push({
+    name: "Windows loopback access",
+    ok: diagnostics.localhostReachable,
+    details: diagnostics.localhostReachable
+      ? "http://127.0.0.1 reachable"
+      : "http://127.0.0.1 unreachable",
+  });
+
+  checks.push({
+    name: "Windows LAN access",
+    ok: diagnostics.lanReachable,
+    details: diagnostics.wifiIp
+      ? diagnostics.lanReachable
+        ? `http://${diagnostics.wifiIp}:${port} reachable`
+        : `http://${diagnostics.wifiIp}:${port} unreachable`
+      : "Wi-Fi IPv4 not detected",
+  });
+
+  const recommendations: string[] = [];
+  if (!diagnostics.hasPortProxy || !profileRuleOk) {
+    recommendations.push(`Run: npx codex-blocker mobile:fix --port ${port}`);
+  }
+  if (!diagnostics.localhostReachable) {
+    recommendations.push("Start the server in mobile mode: npx codex-blocker --mobile");
+  }
+  if (
+    diagnostics.localhostReachable &&
+    diagnostics.hasPortProxy &&
+    profileRuleOk &&
+    !diagnostics.lanReachable
+  ) {
+    recommendations.push(
+      "Check router/client isolation or guest Wi-Fi settings (phone may be blocked from peer LAN devices)."
+    );
+  }
+
+  const ok = checks.every((check) => check.ok);
+  return {
+    checks,
+    recommendations,
+    ok,
+  };
+}
+
+export async function runMobileDoctor(port: number): Promise<boolean> {
+  const report: DoctorReport = {
+    ok: true,
+    checks: [],
+    recommendations: [],
+  };
+
+  const localCheck = await checkDiscovery(`http://127.0.0.1:${port}/mobile/discovery`);
+  report.checks.push({
+    name: "Local server from current shell",
+    ok: localCheck.ok,
+    details: localCheck.details,
+  });
+
+  const powershellExe = getPowerShellExecutable();
+  if (!powershellExe) {
+    report.recommendations.push(
+      "PowerShell not found. Windows-specific diagnostics are unavailable in this environment."
+    );
+  } else {
+    const doctorScript = buildWindowsDoctorScript(port);
+    const doctorResult = await runPowerShellScript(powershellExe, doctorScript);
+
+    if (doctorResult.code !== 0) {
+      report.checks.push({
+        name: "Windows diagnostics execution",
+        ok: false,
+        details: doctorResult.stderr.trim() || "failed",
+      });
+      report.recommendations.push(
+        "Failed to query Windows networking state. Try running mobile:doctor from a Windows terminal."
+      );
+    } else {
+      const diagnostics = parseWindowsDiagnostics(doctorResult.stdout);
+      if (!diagnostics) {
+        report.checks.push({
+          name: "Windows diagnostics parsing",
+          ok: false,
+          details: "Unexpected PowerShell output",
+        });
+        report.recommendations.push(
+          "Unable to parse Windows diagnostics output. Re-run with a clean shell."
+        );
+      } else {
+        const windowsAssessment = assessWindowsDiagnostics(diagnostics, port);
+        for (const check of windowsAssessment.checks) {
+          report.checks.push(check);
+        }
+        report.recommendations.push(...windowsAssessment.recommendations);
+      }
+    }
+  }
+
+  report.ok = report.checks.every((check) => check.ok);
+
+  console.log("\nCodex Blocker Mobile Doctor");
+  console.log(`Port: ${port}`);
+  if (detectWsl()) {
+    console.log("Environment: WSL");
+  }
+  console.log("");
+
+  for (const check of report.checks) {
+    const icon = check.ok ? "[OK]" : "[FAIL]";
+    console.log(`${icon} ${check.name} - ${check.details}`);
+  }
+
+  console.log("");
+  if (report.recommendations.length > 0) {
+    console.log("Recommendations:");
+    for (const recommendation of report.recommendations) {
+      console.log(`- ${recommendation}`);
+    }
+  } else {
+    console.log("No issues detected.");
+  }
+
+  console.log("");
+  return report.ok;
+}
+
+export async function runMobileFix(port: number): Promise<boolean> {
+  const powershellExe = getPowerShellExecutable();
+  if (!powershellExe) {
+    console.error("PowerShell is required for mobile:fix but was not found.");
+    return false;
+  }
+
+  const script = buildWindowsFixScript(port);
+  const result = await runPowerShellScript(powershellExe, script);
+
+  if (result.code !== 0) {
+    const stderr = result.stderr.trim() || "unknown error";
+    console.error(`mobile:fix failed: ${stderr}`);
+    return false;
+  }
+
+  const stdout = result.stdout.trim();
+  if (stdout) {
+    console.log(stdout);
+  }
+
+  console.log("\nRunning doctor after fix...\n");
+  return runMobileDoctor(port);
+}

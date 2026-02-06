@@ -10,6 +10,8 @@
 `codex-blocker` can now expose a mobile mode for LAN clients (the Expo iOS app):
 
 - `npx codex-blocker --mobile`
+- `npx codex-blocker mobile:doctor` for diagnostics
+- `npx codex-blocker mobile:fix` for automated Windows networking setup
 - Defaults to binding on `0.0.0.0` in mobile mode.
 - Publishes mDNS service `_codex-blocker._tcp`.
 - Exposes mobile endpoints:
@@ -64,9 +66,9 @@ Common symptom:
 ### Typical fix path
 
 1. Keep server running in WSL with `--mobile`.
-2. Add Windows `portproxy` from `0.0.0.0:8765 -> 127.0.0.1:8765`.
-3. Add inbound firewall rule on the active network profile.
-4. Confirm network profile (Public vs Private) matches firewall rule scope.
+2. Run `npx codex-blocker mobile:doctor`.
+3. If doctor flags proxy/firewall issues, run `npx codex-blocker mobile:fix`.
+4. Re-run `mobile:doctor` until all checks pass.
 
 Example validation:
 
@@ -92,3 +94,27 @@ If Windows succeeds but iPhone fails, check:
 5. App-level connectivity:
    - Start app with `pnpm dev:mobile` (tunnel + clear)
    - Verify phase transitions: `discovering -> pairing/connected`
+
+## Reset Networking State (Testing `mobile:fix`)
+
+Use this if you want to intentionally clear current Windows rules and verify that
+`mobile:fix` recreates everything.
+
+Run in Administrator PowerShell:
+
+```powershell
+netsh interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport=8765
+netsh interface portproxy delete v4tov4 listenaddress=127.0.0.1 listenport=8765
+
+Remove-NetFirewallRule -DisplayName \"Codex Blocker 8765 Private LocalSubnet\" -ErrorAction SilentlyContinue
+Remove-NetFirewallRule -DisplayName \"Codex Blocker 8765 Public LocalSubnet\" -ErrorAction SilentlyContinue
+Remove-NetFirewallRule -DisplayName \"Codex Blocker 8765\" -ErrorAction SilentlyContinue
+```
+
+Then run:
+
+```bash
+npx codex-blocker mobile:doctor
+npx codex-blocker mobile:fix
+npx codex-blocker mobile:doctor
+```

@@ -5,11 +5,13 @@ import { createInterface } from "readline";
 import { startServer } from "./server.js";
 import { setupCodex, removeCodexSetup, isCodexAvailable } from "./setup.js";
 import { DEFAULT_PORT } from "./types.js";
+import { runMobileDoctor, runMobileFix } from "./mobile-network.js";
 
 const require = createRequire(import.meta.url);
 const { version } = require("../package.json") as { version?: string };
 
-const args = process.argv.slice(2);
+const args = process.argv.slice(2).filter((arg) => arg !== "--");
+const FLAGS_WITH_VALUES = new Set(["--port", "--bind", "--mobile-name"]);
 
 function prompt(question: string): Promise<string> {
   const rl = createInterface({
@@ -31,6 +33,8 @@ Codex Blocker - Block distracting sites when Codex isn't working
 
 Usage:
   npx codex-blocker [options]
+  npx codex-blocker mobile:doctor [--port <port>]
+  npx codex-blocker mobile:fix [--port <port>]
 
 Options:
   --setup     Show Codex setup info
@@ -47,6 +51,8 @@ Examples:
   npx codex-blocker --port 9000
   npx codex-blocker --mobile
   npx codex-blocker --mobile --bind 0.0.0.0
+  npx codex-blocker mobile:doctor
+  npx codex-blocker mobile:fix
 `);
 }
 
@@ -58,7 +64,23 @@ function getStringFlag(flag: string): string | null {
   return value;
 }
 
+function getCommandArg(): string | null {
+  for (let index = 0; index < args.length; index += 1) {
+    const current = args[index];
+    if (current.startsWith("--")) {
+      if (FLAGS_WITH_VALUES.has(current)) {
+        index += 1;
+      }
+      continue;
+    }
+    return current;
+  }
+  return null;
+}
+
 async function main(): Promise<void> {
+  const command = getCommandArg();
+
   if (args.includes("--help") || args.includes("-h")) {
     printHelp();
     process.exit(0);
@@ -95,6 +117,16 @@ async function main(): Promise<void> {
   const mobile = args.includes("--mobile");
   const bindHost = getStringFlag("--bind") ?? (mobile ? "0.0.0.0" : "127.0.0.1");
   const mobileServiceName = getStringFlag("--mobile-name") ?? "Codex Blocker";
+
+  if (command === "mobile:doctor") {
+    const healthy = await runMobileDoctor(port);
+    process.exit(healthy ? 0 : 1);
+  }
+
+  if (command === "mobile:fix") {
+    const healthy = await runMobileFix(port);
+    process.exit(healthy ? 0 : 1);
+  }
 
   if (!isCodexAvailable()) {
     console.log("Codex sessions directory not found yet.");

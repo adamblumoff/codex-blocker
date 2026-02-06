@@ -9,6 +9,15 @@
 
 Mobile setup should be one-click from the user perspective, without requiring users to manually run PowerShell admin commands.
 
+## Current Status
+
+- Implemented:
+  - `mobile:doctor` diagnostics command
+  - `mobile:fix` automated Windows proxy/firewall setup (with elevation prompt when needed)
+- Remaining:
+  - In-app guided setup UX
+  - Relay fallback mode
+
 ## Current Problem
 
 For some Windows + WSL environments:
