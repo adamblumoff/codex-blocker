@@ -146,15 +146,28 @@ jobs:
           CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
         run: |
           item_name="publishers/${CWS_PUBLISHER_ID}/items/${CWS_EXTENSION_ID}"
-          upload_url="https://chromewebstore.googleapis.com/upload/v2/${item_name}:upload"
+          upload_url="https://chromewebstore.googleapis.com/upload/v2/${item_name}:upload?uploadType=media"
           status_url="https://chromewebstore.googleapis.com/v2/${item_name}:fetchStatus"
+          upload_body_file="$(mktemp)"
 
-          upload_json="$(
-            curl -sS -f -X POST "$upload_url" \
+          upload_status="$(
+            curl -sS -X POST "$upload_url" \
               -H "Authorization: Bearer ${CWS_ACCESS_TOKEN}" \
-              -H "Content-Type: application/zip" \
-              --data-binary "@packages/extension/codex-blocker.zip"
+              -H "Content-Type: application/octet-stream" \
+              --data-binary "@packages/extension/codex-blocker.zip" \
+              -o "$upload_body_file" \
+              -w "%{http_code}"
           )"
+
+          if [ "$upload_status" -lt 200 ] || [ "$upload_status" -ge 300 ]; then
+            echo "Chrome Web Store upload request failed with HTTP $upload_status"
+            cat "$upload_body_file"
+            rm -f "$upload_body_file"
+            exit 1
+          fi
+
+          upload_json="$(cat "$upload_body_file")"
+          rm -f "$upload_body_file"
 
           upload_state="$(echo "$upload_json" | jq -r '.uploadState // empty')"
           if [ -z "$upload_state" ]; then
@@ -268,7 +281,15 @@ jobs:
             curl -sS -f "$status_url" \
               -H "Authorization: Bearer ${CWS_ACCESS_TOKEN}"
           )"
-          echo "$status_json" | jq '{state, lastAsyncUploadState, itemError, warnings}'
+          echo "$status_json" | jq '{
+            name,
+            itemId,
+            lastAsyncUploadState,
+            warned,
+            takenDown,
+            submittedState: .submittedItemRevisionStatus.state,
+            publishedState: .publishedItemRevisionStatus.state
+          }'
 
       - name: Resolve npm tag
         id: npm_tag
@@ -396,7 +417,15 @@ jobs:
             curl -sS -f "$status_url" \
               -H "Authorization: Bearer ${CWS_ACCESS_TOKEN}"
           )"
-          echo "$status_json" | jq '{state, lastAsyncUploadState, itemError, warnings}'
+          echo "$status_json" | jq '{
+            name,
+            itemId,
+            lastAsyncUploadState,
+            warned,
+            takenDown,
+            submittedState: .submittedItemRevisionStatus.state,
+            publishedState: .publishedItemRevisionStatus.state
+          }'
 
       - name: Checkout (for optional upload smoke)
         if: github.event.inputs.cws_check_upload == 'true'
@@ -435,15 +464,28 @@ jobs:
           CWS_PUBLISHER_ID: ${{ secrets.CWS_PUBLISHER_ID }}
         run: |
           item_name="publishers/${CWS_PUBLISHER_ID}/items/${CWS_EXTENSION_ID}"
-          upload_url="https://chromewebstore.googleapis.com/upload/v2/${item_name}:upload"
+          upload_url="https://chromewebstore.googleapis.com/upload/v2/${item_name}:upload?uploadType=media"
           status_url="https://chromewebstore.googleapis.com/v2/${item_name}:fetchStatus"
+          upload_body_file="$(mktemp)"
 
-          upload_json="$(
-            curl -sS -f -X POST "$upload_url" \
+          upload_status="$(
+            curl -sS -X POST "$upload_url" \
               -H "Authorization: Bearer ${CWS_ACCESS_TOKEN}" \
-              -H "Content-Type: application/zip" \
-              --data-binary "@packages/extension/codex-blocker.zip"
+              -H "Content-Type: application/octet-stream" \
+              --data-binary "@packages/extension/codex-blocker.zip" \
+              -o "$upload_body_file" \
+              -w "%{http_code}"
           )"
+
+          if [ "$upload_status" -lt 200 ] || [ "$upload_status" -ge 300 ]; then
+            echo "Chrome Web Store upload request failed with HTTP $upload_status"
+            cat "$upload_body_file"
+            rm -f "$upload_body_file"
+            exit 1
+          fi
+
+          upload_json="$(cat "$upload_body_file")"
+          rm -f "$upload_body_file"
 
           upload_state="$(echo "$upload_json" | jq -r '.uploadState // empty')"
           if [ -z "$upload_state" ]; then
