@@ -2,7 +2,9 @@ import * as Network from "expo-network";
 import { fetchDiscovery, type DiscoveredServer } from "./server";
 
 const DEFAULT_PORT = 8765;
-const SCAN_CONCURRENCY = 24;
+const SCAN_CONCURRENCY = 8;
+const SUBNET_BATCH_SIZE = 28;
+const SUBNET_BATCH_PAUSE_MS = 16;
 
 function uniqueHosts(candidates: string[]): string[] {
   const seen = new Set<string>();
@@ -24,15 +26,22 @@ function getSubnetHostsFromIp(ipAddress: string): string[] {
   const current = Number(ipv4[4]);
 
   const prioritized: number[] = [1, 2, 10, 50, 100, 150, 200, 254, current];
-  for (let i = 1; i <= 254; i += 1) {
-    prioritized.push(i);
+  for (let octet = 1; octet <= 254; octet += 1) {
+    prioritized.push(octet);
   }
 
-  const ordered = uniqueHosts(prioritized.map((octet) => `${prefix}.${octet}`));
-  return ordered;
+  return uniqueHosts(prioritized.map((octet) => `${prefix}.${octet}`));
 }
 
-async function findFirstAvailable(hosts: string[], port: number): Promise<DiscoveredServer | null> {
+function pause(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function findFirstAvailable(
+  hosts: string[],
+  port: number,
+  concurrency: number
+): Promise<DiscoveredServer | null> {
   let nextIndex = 0;
   let winner: DiscoveredServer | null = null;
 
@@ -54,25 +63,45 @@ async function findFirstAvailable(hosts: string[], port: number): Promise<Discov
   };
 
   const workers = Array.from(
-    { length: Math.min(SCAN_CONCURRENCY, Math.max(hosts.length, 1)) },
+    { length: Math.min(concurrency, Math.max(hosts.length, 1)) },
     () => worker()
   );
-
   await Promise.all(workers);
   return winner;
 }
 
+async function scanSubnetInBatches(hosts: string[], port: number): Promise<DiscoveredServer | null> {
+  for (let index = 0; index < hosts.length; index += SUBNET_BATCH_SIZE) {
+    const batch = hosts.slice(index, index + SUBNET_BATCH_SIZE);
+    const found = await findFirstAvailable(batch, port, SCAN_CONCURRENCY);
+    if (found) {
+      return found;
+    }
+    if (index + SUBNET_BATCH_SIZE < hosts.length) {
+      await pause(SUBNET_BATCH_PAUSE_MS);
+    }
+  }
+  return null;
+}
+
 export async function discoverServer(preferredHost?: string): Promise<DiscoveredServer | null> {
   const localIp = await Network.getIpAddressAsync().catch(() => "");
-  const candidates = uniqueHosts([
-    preferredHost ?? "",
-    "codex-blocker.local",
-    ...getSubnetHostsFromIp(localIp),
-  ]);
+  const quickCandidates = uniqueHosts([preferredHost ?? "", "codex-blocker.local"]);
 
-  if (candidates.length === 0) {
+  if (quickCandidates.length > 0) {
+    const quickHit = await findFirstAvailable(quickCandidates, DEFAULT_PORT, 2);
+    if (quickHit) {
+      return quickHit;
+    }
+  }
+
+  const subnetCandidates = uniqueHosts(
+    getSubnetHostsFromIp(localIp).filter((host) => !quickCandidates.includes(host))
+  );
+
+  if (subnetCandidates.length === 0) {
     return null;
   }
 
-  return findFirstAvailable(candidates, DEFAULT_PORT);
+  return scanSubnetInBatches(subnetCandidates, DEFAULT_PORT);
 }

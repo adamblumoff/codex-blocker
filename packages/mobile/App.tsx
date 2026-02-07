@@ -40,6 +40,16 @@ function formatPairingExpiry(value: number | null): string {
   return new Date(value).toLocaleTimeString();
 }
 
+function getConnectionMessage(phase: string, error: string | null): string {
+  if (error) return error;
+  if (phase === "connected") return "Connected to codex-blocker server.";
+  if (phase === "pairing") return "Not connected. Enter the terminal pairing code.";
+  if (phase === "connecting" || phase === "discovering" || phase === "booting") {
+    return "Connecting to codex-blocker server...";
+  }
+  return "Not connected to codex-blocker server.";
+}
+
 export default function App() {
   const {
     phase,
@@ -142,6 +152,7 @@ export default function App() {
 
   const connectionColor =
     phase === "connected" ? "#1f7a4d" : phase === "error" ? "#a23636" : "#8b6e26";
+  const connectionMessage = getConnectionMessage(phase, error);
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -151,6 +162,18 @@ export default function App() {
           <View style={styles.statusRow}>
             <View style={[styles.statusDot, { backgroundColor: connectionColor }]} />
             <Text style={styles.statusText}>{phase}</Text>
+          </View>
+          <View
+            style={[
+              styles.connectionBanner,
+              phase === "connected"
+                ? styles.connectionBannerConnected
+                : phase === "error"
+                  ? styles.connectionBannerError
+                  : styles.connectionBannerPending,
+            ]}
+          >
+            <Text style={styles.connectionBannerText}>{connectionMessage}</Text>
           </View>
           <Text style={styles.hostText}>{host ? `Server: ${host}` : "Server: searching"}</Text>
           <Text style={styles.hostText}>Last update: {formatLastUpdate(lastUpdatedAt)}</Text>
@@ -288,6 +311,28 @@ const styles = StyleSheet.create({
   hostText: {
     fontSize: 13,
     color: "#4d5566",
+  },
+  connectionBanner: {
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+  },
+  connectionBannerConnected: {
+    backgroundColor: "#edf8f1",
+    borderColor: "#bee2cb",
+  },
+  connectionBannerPending: {
+    backgroundColor: "#fff7e8",
+    borderColor: "#e9d3a4",
+  },
+  connectionBannerError: {
+    backgroundColor: "#fdeeee",
+    borderColor: "#e8c2c2",
+  },
+  connectionBannerText: {
+    fontSize: 12,
+    color: "#2c3548",
   },
   discoveryRow: {
     flexDirection: "row",

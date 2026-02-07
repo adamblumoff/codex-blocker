@@ -11,12 +11,16 @@ export {};
 interface ExtensionState {
   blocked: boolean;
   serverConnected: boolean;
+  transportConnected?: boolean;
   sessions: number;
   working: number;
   bypassActive: boolean;
   pauseMedia: boolean;
   forceBlock: boolean;
   forceOpen: boolean;
+  pairingRequired?: boolean;
+  connectionPhase?: "pairing" | "connecting" | "connected" | "reconnecting" | "offline";
+  connectionMessage?: string;
 }
 
 interface BypassStatus {
@@ -291,8 +295,17 @@ async function removeDomain(domain: string): Promise<void> {
 
 // Update UI with extension state
 function updateUI(state: ExtensionState): void {
-  // Status badge
-  if (!state.serverConnected) {
+  const phase = state.connectionPhase;
+  if (phase === "pairing" || state.pairingRequired) {
+    statusIndicator.className = "status-indicator disconnected";
+    statusText.textContent = "Pairing Required";
+  } else if (phase === "connecting") {
+    statusIndicator.className = "status-indicator working";
+    statusText.textContent = "Connecting";
+  } else if (phase === "reconnecting") {
+    statusIndicator.className = "status-indicator working";
+    statusText.textContent = "Reconnecting";
+  } else if (!state.serverConnected || phase === "offline") {
     statusIndicator.className = "status-indicator disconnected";
     statusText.textContent = "Offline";
   } else if (state.working > 0) {
@@ -302,6 +315,7 @@ function updateUI(state: ExtensionState): void {
     statusIndicator.className = "status-indicator connected";
     statusText.textContent = "Connected";
   }
+  statusText.title = state.connectionMessage ?? "";
 
   // Stats
   sessionsEl.textContent = String(state.sessions);

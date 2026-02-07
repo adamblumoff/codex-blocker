@@ -47,6 +47,20 @@ describe("service worker", () => {
     });
   }
 
+  async function waitForState(
+    predicate: (state: any) => boolean,
+    attempts = 6
+  ): Promise<any> {
+    for (let index = 0; index < attempts; index += 1) {
+      const state = await sendRuntimeMessage({ type: "GET_STATE" });
+      if (predicate(state)) {
+        return state;
+      }
+      await Promise.resolve();
+    }
+    return sendRuntimeMessage({ type: "GET_STATE" });
+  }
+
   beforeEach(() => {
     vi.useFakeTimers();
     Object.keys(syncData).forEach((key) => delete syncData[key]);
@@ -169,6 +183,7 @@ describe("service worker", () => {
 
     const initialState = await sendRuntimeMessage({ type: "GET_STATE" });
     expect(initialState.pairingRequired).toBe(true);
+    expect(initialState.connectionPhase).toBe("pairing");
 
     const port = {
       name: "state",
@@ -191,6 +206,7 @@ describe("service worker", () => {
 
     const connectedState = await sendRuntimeMessage({ type: "GET_STATE" });
     expect(connectedState.pairingRequired).toBe(false);
+    expect(connectedState.connectionPhase).toBe("connected");
     expect(sendMessageSpy).toHaveBeenCalled();
   });
 
@@ -206,8 +222,11 @@ describe("service worker", () => {
     FakeWebSocket.latest?.closeWithCode(1008);
     await Promise.resolve();
 
-    const stateAfterReject = await sendRuntimeMessage({ type: "GET_STATE" });
+    const stateAfterReject = await waitForState(
+      (state) => state?.pairingRequired === true && state?.connectionPhase === "pairing"
+    );
     expect(stateAfterReject.pairingRequired).toBe(true);
+    expect(stateAfterReject.connectionPhase).toBe("pairing");
     expect(sessionData.sessionAuthToken).toBeUndefined();
   });
 });

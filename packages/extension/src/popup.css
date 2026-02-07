@@ -20,7 +20,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 16px;
+  margin-bottom: 6px;
 }
 
 .status-row {
@@ -61,6 +61,13 @@ body {
   font-size: 13px;
   font-weight: 500;
   color: #999;
+}
+
+.connection-note {
+  font-size: 11px;
+  line-height: 1.35;
+  color: #9b9ba3;
+  margin-bottom: 12px;
 }
 
 .block-badge {
@@ -105,6 +112,10 @@ body {
   border-radius: 10px;
   padding: 10px;
   margin-bottom: 12px;
+}
+
+.pairing-panel[hidden] {
+  display: none;
 }
 
 .pairing-title {

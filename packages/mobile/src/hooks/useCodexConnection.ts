@@ -36,11 +36,21 @@ type WebSocketHandle = {
   close: () => void;
 };
 
+function sameStatus(a: CodexStatus, b: CodexStatus): boolean {
+  return (
+    a.blocked === b.blocked &&
+    a.sessions === b.sessions &&
+    a.working === b.working &&
+    a.waitingForInput === b.waitingForInput
+  );
+}
+
 function connectRealtimeSocket(
   host: string,
   token: string,
   onState: (status: CodexStatus) => void,
-  onConnecting: () => void,
+  onSocketReady: () => void,
+  onReconnecting: () => void,
   onAuthInvalidated: () => void
 ): WebSocketHandle {
   let websocket: WebSocket | null = null;
@@ -55,7 +65,7 @@ function connectRealtimeSocket(
 
     websocket.onopen = () => {
       retries = 0;
-      onConnecting();
+      onSocketReady();
     };
 
     websocket.onmessage = (event) => {
@@ -72,7 +82,7 @@ function connectRealtimeSocket(
         onAuthInvalidated();
         return;
       }
-      onConnecting();
+      onReconnecting();
       const delay = Math.min(
         RECONNECT_BASE_DELAY_MS * Math.pow(2, retries),
         RECONNECT_MAX_DELAY_MS
@@ -235,12 +245,27 @@ export function useCodexConnection() {
         nextHost,
         token,
         (nextStatus) => {
-          setState((current) => ({
-            ...current,
-            phase: "connected",
-            status: nextStatus,
-            lastUpdatedAt: Date.now(),
-          }));
+          setState((current) => {
+            if (sameStatus(current.status, nextStatus) && current.phase === "connected") {
+              return current;
+            }
+            return {
+              ...current,
+              phase: "connected",
+              status: nextStatus,
+              lastUpdatedAt: Date.now(),
+            };
+          });
+        },
+        () => {
+          setState((current) =>
+            current.phase === "connected"
+              ? current
+              : {
+                  ...current,
+                  phase: "connected",
+                }
+          );
         },
         setConnecting,
         () => {

@@ -14,6 +14,7 @@ describe("popup", () => {
     document.body.innerHTML = `
       <span id="status-dot"></span>
       <span id="status-text"></span>
+      <div id="connection-note"></div>
       <span id="sessions"></span>
       <span id="working"></span>
       <div id="block-badge"></div>
@@ -114,7 +115,9 @@ describe("popup", () => {
     await import("../src/popup.js");
 
     const panel = document.getElementById("pairing-panel") as HTMLElement;
+    const connectionNote = document.getElementById("connection-note") as HTMLElement;
     expect(panel.hidden).toBe(false);
+    expect(connectionNote.textContent?.length).toBeGreaterThan(0);
 
     const input = document.getElementById("pairing-code") as HTMLInputElement;
     const submit = document.getElementById("pairing-submit") as HTMLButtonElement;

@@ -20,6 +20,13 @@ type PairConfirmResponse = {
   token: string;
 };
 
+type ConnectionPhase =
+  | "pairing"
+  | "connecting"
+  | "connected"
+  | "reconnecting"
+  | "offline";
+
 interface State {
   enabled: boolean;
   pauseMedia: boolean;
@@ -32,6 +39,8 @@ interface State {
   bypassUntil: number | null;
   pairingRequired: boolean;
   pairingExpiresAt: number | null;
+  connectionPhase: ConnectionPhase;
+  connectionMessage: string;
 }
 
 const state: State = {
@@ -46,6 +55,8 @@ const state: State = {
   bypassUntil: null,
   pairingRequired: true,
   pairingExpiresAt: null,
+  connectionPhase: "pairing",
+  connectionMessage: "Enter the 6-digit code from your terminal.",
 };
 
 const storageSession = (
@@ -151,6 +162,11 @@ function buildWsProtocols(): string[] | undefined {
   return ["codex-blocker.v1", `${WS_TOKEN_PROTOCOL_PREFIX}${authToken}`];
 }
 
+function setConnectionPhase(phase: ConnectionPhase, message: string): void {
+  state.connectionPhase = phase;
+  state.connectionMessage = message;
+}
+
 function getPublicState() {
   const bypassActive = state.bypassUntil !== null && state.bypassUntil > Date.now();
   const now = Date.now();
@@ -173,7 +189,8 @@ function getPublicState() {
     forceOpen: state.forceOpen,
     pauseMedia: state.pauseMedia,
     forceBlock: state.forceBlock,
-    serverConnected: state.serverConnected,
+    serverConnected,
+    transportConnected: state.serverConnected,
     sessions: state.sessions,
     working: state.working,
     waitingForInput: state.waitingForInput,
@@ -182,6 +199,8 @@ function getPublicState() {
     bypassUntil: state.bypassUntil,
     pairingRequired: state.pairingRequired,
     pairingExpiresAt: state.pairingExpiresAt,
+    connectionPhase: state.connectionPhase,
+    connectionMessage: state.connectionMessage,
   };
 }
 
@@ -266,12 +285,20 @@ async function enterPairingMode(reason?: string): Promise<void> {
   await clearSessionToken();
 
   state.pairingRequired = true;
-  state.pairingExpiresAt = await requestPairingWindow();
+  const expiresAt = await requestPairingWindow();
+  state.pairingExpiresAt = expiresAt;
+  setConnectionPhase(
+    "pairing",
+    expiresAt
+      ? "Pairing required. Enter the latest terminal code."
+      : "Pairing required. Could not reach server to refresh code."
+  );
   broadcast();
 }
 
 function scheduleReconnect() {
   if (!authToken || state.pairingRequired) return;
+  setConnectionPhase("reconnecting", "Connection lost. Reconnecting to server...");
   clearReconnectTimer();
   const delay = Math.min(RECONNECT_BASE_DELAY * Math.pow(2, retryCount), RECONNECT_MAX_DELAY);
   retryCount += 1;
@@ -288,6 +315,10 @@ async function connect() {
   if (websocket?.readyState === WebSocket.CONNECTING) return;
 
   try {
+    if (retryCount === 0) {
+      setConnectionPhase("connecting", "Connecting to server...");
+      broadcast();
+    }
     const protocols = buildWsProtocols();
     websocket = protocols ? new WebSocket(WS_URL_BASE, protocols) : new WebSocket(WS_URL_BASE);
 
@@ -296,6 +327,7 @@ async function connect() {
       state.serverConnected = true;
       lastDisconnectAt = null;
       retryCount = 0;
+      setConnectionPhase("connected", "Connected to codex-blocker server.");
       startKeepalive();
       broadcast();
     };
@@ -318,7 +350,6 @@ async function connect() {
       state.serverConnected = false;
       lastDisconnectAt = Date.now();
       stopKeepalive();
-      broadcast();
       websocket = null;
 
       if (event.code === 1008) {
@@ -326,6 +357,8 @@ async function connect() {
         return;
       }
 
+      setConnectionPhase("reconnecting", "Connection lost. Reconnecting to server...");
+      broadcast();
       scheduleReconnect();
     };
 
@@ -333,8 +366,11 @@ async function connect() {
       state.serverConnected = false;
       lastDisconnectAt = Date.now();
       stopKeepalive();
+      setConnectionPhase("reconnecting", "Connection error. Retrying...");
     };
   } catch {
+    setConnectionPhase("offline", "Unable to open websocket. Server may be offline.");
+    broadcast();
     scheduleReconnect();
   }
 }
@@ -371,6 +407,7 @@ async function confirmPairingCode(rawCode: string): Promise<{ ok: true } | { ok:
   state.pairingRequired = false;
   state.pairingExpiresAt = null;
   lastDisconnectAt = null;
+  setConnectionPhase("connecting", "Pairing accepted. Connecting...");
   clearReconnectTimer();
   teardownSocket();
   broadcast();
@@ -390,6 +427,12 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       const expiresAt = await requestPairingWindow();
       state.pairingRequired = true;
       state.pairingExpiresAt = expiresAt;
+      setConnectionPhase(
+        "pairing",
+        expiresAt
+          ? "Use the latest terminal code to pair this extension."
+          : "Could not reach server to start pairing."
+      );
       broadcast();
       if (expiresAt === null) {
         sendResponse({ success: false, error: "Could not start pairing on server." });
@@ -514,6 +557,7 @@ void (async () => {
   if (authToken) {
     state.pairingRequired = false;
     state.pairingExpiresAt = null;
+    setConnectionPhase("connecting", "Restoring extension session...");
     broadcast();
     void connect();
     return;

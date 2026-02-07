@@ -3,6 +3,7 @@ export {};
 interface PopupState {
   blocked: boolean;
   serverConnected: boolean;
+  transportConnected?: boolean;
   sessions: number;
   working: number;
   bypassActive: boolean;
@@ -10,6 +11,8 @@ interface PopupState {
   forceOpen: boolean;
   pairingRequired?: boolean;
   pairingExpiresAt?: number | null;
+  connectionPhase?: "pairing" | "connecting" | "connected" | "reconnecting" | "offline";
+  connectionMessage?: string;
 }
 
 type PairingResponse =
@@ -22,6 +25,7 @@ const sessionsEl = document.getElementById("sessions") as HTMLElement;
 const workingEl = document.getElementById("working") as HTMLElement;
 const blockBadge = document.getElementById("block-badge") as HTMLElement;
 const blockStatus = document.getElementById("block-status") as HTMLElement;
+const connectionNote = document.getElementById("connection-note") as HTMLElement;
 const settingsBtn = document.getElementById("settings-btn") as HTMLButtonElement;
 const roastToggle = document.getElementById("roast-toggle") as HTMLInputElement;
 const pairingPanel = document.getElementById("pairing-panel") as HTMLElement;
@@ -56,10 +60,18 @@ function updatePairingUI(state: PopupState): void {
 }
 
 function updateUI(state: PopupState): void {
-  if (state.pairingRequired) {
+  const phase = state.connectionPhase;
+
+  if (phase === "pairing" || state.pairingRequired) {
     statusDot.className = "status-dot disconnected";
     statusText.textContent = "Pairing required";
-  } else if (!state.serverConnected) {
+  } else if (phase === "connecting") {
+    statusDot.className = "status-dot working";
+    statusText.textContent = "Connecting";
+  } else if (phase === "reconnecting") {
+    statusDot.className = "status-dot working";
+    statusText.textContent = "Reconnecting";
+  } else if (!state.serverConnected || phase === "offline") {
     statusDot.className = "status-dot disconnected";
     statusText.textContent = "Offline";
   } else if (state.working > 0) {
@@ -72,6 +84,9 @@ function updateUI(state: PopupState): void {
 
   sessionsEl.textContent = String(state.sessions);
   workingEl.textContent = String(state.working);
+  connectionNote.textContent =
+    state.connectionMessage ??
+    (state.serverConnected ? "Connected to codex-blocker server." : "Not connected to server.");
 
   if (state.forceBlock && !state.forceOpen) {
     blockBadge.className = "block-badge blocked";
