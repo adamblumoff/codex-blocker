@@ -16,10 +16,7 @@ import {
 } from "./mobile.js";
 import { publishMobileService, type MdnsServiceHandle } from "./mdns.js";
 import {
-  DEFAULT_TOKEN_PATH,
   createAuthToken,
-  loadTokenFromPath,
-  saveTokenToPath,
 } from "./auth-token.js";
 const RATE_WINDOW_MS = 60_000;
 const RATE_LIMIT = 60;
@@ -59,24 +56,6 @@ export function isLoopbackClientIp(clientIp?: string | null): boolean {
   if (!clientIp) return false;
   const normalized = clientIp.startsWith("::ffff:") ? clientIp.slice(7) : clientIp;
   return normalized === "127.0.0.1" || normalized === "::1";
-}
-
-type BootstrapAuthTokenParams = {
-  authToken: string | null;
-  providedToken: string | null;
-  origin?: string | null;
-  clientIp: string;
-};
-
-export function canBootstrapAuthToken({
-  authToken,
-  providedToken,
-  origin,
-  clientIp,
-}: BootstrapAuthTokenParams): boolean {
-  if (authToken || !providedToken) return false;
-  if (!isTrustedChromeExtensionOrigin(origin)) return false;
-  return isLoopbackClientIp(clientIp);
 }
 
 function getClientIp(req: IncomingMessage): string {
@@ -232,7 +211,6 @@ function getResponseHost(req: IncomingMessage, bindHost: string, port: number): 
 export type ServerOptions = {
   sessionsDir?: string;
   startWatcher?: boolean;
-  tokenPath?: string;
   state?: SessionState;
   log?: boolean;
   bindHost?: string;
@@ -253,16 +231,15 @@ export function startServer(
   options?: ServerOptions
 ): ServerHandle {
   const stateInstance = options?.state ?? defaultState;
-  const tokenPath = options?.tokenPath ?? DEFAULT_TOKEN_PATH;
   const startWatcher = options?.startWatcher ?? true;
   const logBanner = options?.log ?? true;
-  const mobileEnabled = options?.mobile ?? false;
+  const mobileEnabled = options?.mobile ?? true;
   const bindHost = options?.bindHost ?? (mobileEnabled ? "0.0.0.0" : "127.0.0.1");
   const mobileServiceName = options?.mobileServiceName ?? "Codex Blocker";
   const publishMdns = options?.publishMdns ?? mobileEnabled;
   const mobileInstanceId = createServerInstanceId();
 
-  let authToken = loadTokenFromPath(tokenPath);
+  let authToken: string | null = null;
   let activePort = port;
   let mdnsService: MdnsServiceHandle | null = null;
 
@@ -354,7 +331,6 @@ export function startServer(
 
         if (!authToken) {
           authToken = createAuthToken();
-          saveTokenToPath(tokenPath, authToken);
         }
 
         const host = getResponseHost(req, bindHost, activePort);
@@ -374,17 +350,6 @@ export function startServer(
         sendJson(res, { error: "Unauthorized" }, 401);
         return;
       }
-    } else if (
-      canBootstrapAuthToken({
-        authToken,
-        providedToken,
-        origin,
-        clientIp,
-      }) &&
-      providedToken
-    ) {
-      authToken = providedToken;
-      saveTokenToPath(tokenPath, providedToken);
     } else {
       sendJson(res, { error: "Unauthorized" }, 401);
       return;
@@ -403,8 +368,6 @@ export function startServer(
   wss.on("connection", (ws: WebSocket, req) => {
     const wsUrl = new URL(req.url || "", `http://localhost:${activePort}`);
     const providedToken = readWebSocketAuthToken(req, wsUrl);
-    const origin = req.headers.origin;
-    const allowOrigin = isTrustedChromeExtensionOrigin(origin);
     const clientIp = getClientIp(req);
 
     const currentConnections = wsConnectionsByIp.get(clientIp) ?? 0;
@@ -418,18 +381,6 @@ export function startServer(
         ws.close(1008, "Unauthorized");
         return;
       }
-    } else if (
-      canBootstrapAuthToken({
-        authToken,
-        providedToken,
-        origin,
-        clientIp,
-      }) &&
-      allowOrigin &&
-      providedToken
-    ) {
-      authToken = providedToken;
-      saveTokenToPath(tokenPath, providedToken);
     } else {
       ws.close(1008, "Unauthorized");
       return;

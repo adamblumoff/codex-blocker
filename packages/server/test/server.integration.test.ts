@@ -4,6 +4,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import WebSocket from "ws";
 import { startServer } from "../src/server.js";
+import { MobilePairingManager } from "../src/mobile.js";
 import { SessionState } from "../src/state.js";
 
 type ServerContext = {
@@ -42,15 +43,30 @@ describe("server integration", () => {
 
   beforeAll(async () => {
     const tempDir = await mkdtemp(join(tmpdir(), "codex-blocker-test-"));
-    const token = "test-token";
     const state = new SessionState();
+    const pairing = new MobilePairingManager(() => {});
     const handle = startServer(0, {
-      tokenPath: join(tempDir, "token"),
       startWatcher: false,
       state,
       log: false,
+      mobilePairingManager: pairing,
     });
     const port = await handle.ready;
+    await fetch(`http://127.0.0.1:${port}/mobile/pair/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    const tokenResponse = await fetch(
+      `http://127.0.0.1:${port}/mobile/pair/confirm`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: pairing.startPairing().code }),
+      }
+    );
+    const payload = (await tokenResponse.json()) as { token: string };
+    const token = payload.token;
     Object.assign(ctx, { handle, port, token, tempDir, state });
   });
 

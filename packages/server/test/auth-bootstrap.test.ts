@@ -1,47 +1,29 @@
 import { describe, expect, it } from "vitest";
-import { canBootstrapAuthToken } from "../src/server.js";
+import {
+  isLoopbackClientIp,
+  isTrustedChromeExtensionOrigin,
+} from "../src/server.js";
 
-const VALID_EXTENSION_ORIGIN =
-  "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-
-describe("auth token bootstrap guard", () => {
-  it("allows bootstrap only for loopback extension clients when token is unset", () => {
-    const allowed = canBootstrapAuthToken({
-      authToken: null,
-      providedToken: "new-token",
-      origin: VALID_EXTENSION_ORIGIN,
-      clientIp: "127.0.0.1",
-    });
-    expect(allowed).toBe(true);
+describe("origin and loopback guards", () => {
+  it("accepts valid chrome extension origins", () => {
+    expect(
+      isTrustedChromeExtensionOrigin(
+        "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      )
+    ).toBe(true);
   });
 
-  it("rejects bootstrap from non-loopback clients", () => {
-    const allowed = canBootstrapAuthToken({
-      authToken: null,
-      providedToken: "new-token",
-      origin: VALID_EXTENSION_ORIGIN,
-      clientIp: "192.168.68.99",
-    });
-    expect(allowed).toBe(false);
+  it("rejects non-extension origins", () => {
+    expect(isTrustedChromeExtensionOrigin("https://example.com")).toBe(false);
   });
 
-  it("rejects bootstrap when an auth token already exists", () => {
-    const allowed = canBootstrapAuthToken({
-      authToken: "existing-token",
-      providedToken: "new-token",
-      origin: VALID_EXTENSION_ORIGIN,
-      clientIp: "127.0.0.1",
-    });
-    expect(allowed).toBe(false);
+  it("accepts local loopback client addresses", () => {
+    expect(isLoopbackClientIp("127.0.0.1")).toBe(true);
+    expect(isLoopbackClientIp("::1")).toBe(true);
+    expect(isLoopbackClientIp("::ffff:127.0.0.1")).toBe(true);
   });
 
-  it("rejects invalid extension origins", () => {
-    const allowed = canBootstrapAuthToken({
-      authToken: null,
-      providedToken: "new-token",
-      origin: "https://example.com",
-      clientIp: "127.0.0.1",
-    });
-    expect(allowed).toBe(false);
+  it("rejects non-loopback addresses", () => {
+    expect(isLoopbackClientIp("192.168.68.54")).toBe(false);
   });
 });

@@ -417,7 +417,7 @@ export async function runMobileDoctor(
     details: localCheck.details,
   });
   if (!localCheck.ok) {
-    report.recommendations.push("Start the server in mobile mode: npx codex-blocker --mobile");
+    report.recommendations.push("Start the server: npx codex-blocker");
   }
 
   const powershellExe = getPowerShellExecutable();

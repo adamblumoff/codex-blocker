@@ -43,7 +43,6 @@ describe("mobile integration", () => {
     const state = new SessionState();
     const pairing = new MobilePairingManager(() => {});
     const handle = startServer(0, {
-      tokenPath: join(tempDir, "token"),
       startWatcher: false,
       state,
       mobile: true,

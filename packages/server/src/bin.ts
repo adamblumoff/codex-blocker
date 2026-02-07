@@ -6,13 +6,17 @@ import { startServer } from "./server.js";
 import { setupCodex, removeCodexSetup, isCodexAvailable } from "./setup.js";
 import { DEFAULT_PORT } from "./types.js";
 import { runMobileDoctor, runMobileFix, runMobileRemove } from "./mobile-network.js";
-import { DEFAULT_TOKEN_PATH, rotateTokenAtPath } from "./auth-token.js";
 
 const require = createRequire(import.meta.url);
 const { version } = require("../package.json") as { version?: string };
 
 const args = process.argv.slice(2).filter((arg) => arg !== "--");
-const FLAGS_WITH_VALUES = new Set(["--port", "--bind", "--mobile-name", "--token-path"]);
+const FLAGS_WITH_VALUES = new Set(["--port", "--bind", "--mobile-name"]);
+
+function canAutoConfigureHostNetworking(): boolean {
+  if (process.platform === "win32") return true;
+  return Boolean(process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP);
+}
 
 function prompt(question: string): Promise<string> {
   const rl = createInterface({
@@ -37,33 +41,30 @@ Usage:
   npx codex-blocker mobile:doctor [--port <port>]
   npx codex-blocker mobile:fix [--port <port>]
   npx codex-blocker mobile:remove [--port <port>]
-  npx codex-blocker mobile:rotate-token [--token-path <path>]
 
 Options:
   --setup     Show Codex setup info
   --remove    Remove Codex setup (no-op)
   --port      Server port (default: ${DEFAULT_PORT})
-  --mobile    Enable mobile/LAN mode (binds to 0.0.0.0 by default)
+  --mobile    Deprecated alias (mobile mode is always enabled)
   --allow-public  Allow firewall opening on Public profile (higher risk)
-  --mobile-no-auto-fix  Disable automatic mobile doctor+fix on startup
-  --bind      Bind host (default: 127.0.0.1 or 0.0.0.0 with --mobile)
+  --no-auto-fix  Disable automatic mobile doctor+fix on startup
+  --mobile-no-auto-fix  Backward-compatible alias for --no-auto-fix
+  --bind      Bind host (default: 0.0.0.0)
   --mobile-name  Friendly mobile discovery name
-  --token-path  Override token file path (default: ${DEFAULT_TOKEN_PATH})
   --version   Show version
   --help      Show this help message
 
 Examples:
   npx codex-blocker            # Start the server
   npx codex-blocker --port 9000
-  npx codex-blocker --mobile
-  npx codex-blocker --mobile --allow-public
-  npx codex-blocker --mobile --bind 0.0.0.0
+  npx codex-blocker --allow-public
+  npx codex-blocker --bind 0.0.0.0
   npx codex-blocker mobile:doctor
   npx codex-blocker mobile:doctor --allow-public
   npx codex-blocker mobile:fix
   npx codex-blocker mobile:fix --allow-public
   npx codex-blocker mobile:remove
-  npx codex-blocker mobile:rotate-token
 
 SECURITY NOTE:
   IF YOU ENABLE MOBILE NETWORKING, RUN "npx codex-blocker mobile:remove --port ${DEFAULT_PORT}"
@@ -129,10 +130,8 @@ async function main(): Promise<void> {
     }
   }
 
-  const mobile = args.includes("--mobile");
   const allowPublicFirewallRule = args.includes("--allow-public");
-  const tokenPath = getStringFlag("--token-path") ?? DEFAULT_TOKEN_PATH;
-  const bindHost = getStringFlag("--bind") ?? (mobile ? "0.0.0.0" : "127.0.0.1");
+  const bindHost = getStringFlag("--bind") ?? "0.0.0.0";
   const mobileServiceName = getStringFlag("--mobile-name") ?? "Codex Blocker";
 
   if (command === "mobile:doctor") {
@@ -150,13 +149,6 @@ async function main(): Promise<void> {
     process.exit(removed ? 0 : 1);
   }
 
-  if (command === "mobile:rotate-token") {
-    rotateTokenAtPath(tokenPath);
-    console.log(`Rotated auth token at ${tokenPath}`);
-    console.log("Existing clients must pair again to reconnect.");
-    process.exit(0);
-  }
-
   if (!isCodexAvailable()) {
     console.log("Codex sessions directory not found yet.");
     const answer = await prompt("Run Codex once to create it, then press enter to continue. ");
@@ -166,21 +158,24 @@ async function main(): Promise<void> {
   }
 
   const handle = startServer(port, {
-    mobile,
+    mobile: true,
     bindHost,
     mobileServiceName,
-    tokenPath,
   });
 
-  const autoFixDisabled = args.includes("--mobile-no-auto-fix");
-  if (mobile && !autoFixDisabled) {
+  const autoFixDisabled =
+    args.includes("--no-auto-fix") || args.includes("--mobile-no-auto-fix");
+  const shouldAutoFix = canAutoConfigureHostNetworking();
+
+  if (allowPublicFirewallRule) {
+    console.warn(
+      "[Codex Blocker] SECURITY WARNING: --allow-public ENABLES FIREWALL ACCESS ON PUBLIC WI-FI.\n"
+    );
+  }
+
+  if (!autoFixDisabled && shouldAutoFix) {
     void (async () => {
       const activePort = await handle.ready;
-      if (allowPublicFirewallRule) {
-        console.warn(
-          "[Codex Blocker] SECURITY WARNING: --allow-public ENABLES FIREWALL ACCESS ON PUBLIC WI-FI.\n"
-        );
-      }
       console.log(
         `[Codex Blocker] SECURITY NOTE: RUN \`npx codex-blocker mobile:remove --port ${activePort}\` TO REMOVE FIREWALL + PORTPROXY RULES WHEN MOBILE ACCESS IS NO LONGER NEEDED.\n`
       );
@@ -199,14 +194,9 @@ async function main(): Promise<void> {
         );
       }
     })();
-  } else if (mobile) {
+  } else {
     void (async () => {
       const activePort = await handle.ready;
-      if (allowPublicFirewallRule) {
-        console.warn(
-          "[Codex Blocker] SECURITY WARNING: --allow-public ENABLES FIREWALL ACCESS ON PUBLIC WI-FI.\n"
-        );
-      }
       console.log(
         `[Codex Blocker] SECURITY NOTE: RUN \`npx codex-blocker mobile:remove --port ${activePort}\` TO REMOVE FIREWALL + PORTPROXY RULES WHEN MOBILE ACCESS IS NO LONGER NEEDED.\n`
       );
