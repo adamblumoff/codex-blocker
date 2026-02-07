@@ -31,11 +31,15 @@ describe("mobile connection storage", () => {
   });
 
   it("stores only host + instance metadata for reconnect discovery", async () => {
-    await saveConnection("192.168.68.54", "instance-a");
+    await saveConnection("192.168.68.54", "instance-a", 9000);
 
     expect(asyncStorageMock.setItem).toHaveBeenCalledWith(
       "codexBlocker.serverHost",
       "192.168.68.54"
+    );
+    expect(asyncStorageMock.setItem).toHaveBeenCalledWith(
+      "codexBlocker.serverPort",
+      "9000"
     );
     expect(asyncStorageMock.setItem).toHaveBeenCalledWith(
       "codexBlocker.serverInstanceId",
@@ -47,6 +51,7 @@ describe("mobile connection storage", () => {
   it("loads host + instance and forces fresh token pairing on app cold start", async () => {
     asyncStorageMock.getItem.mockImplementation(async (key) => {
       if (key === "codexBlocker.serverHost") return "192.168.68.54";
+      if (key === "codexBlocker.serverPort") return "9000";
       if (key === "codexBlocker.serverInstanceId") return "instance-a";
       return null;
     });
@@ -55,6 +60,7 @@ describe("mobile connection storage", () => {
     const loaded = await loadConnection();
     expect(loaded).toEqual({
       host: "192.168.68.54",
+      port: 9000,
       token: null,
       instanceId: "instance-a",
     });
@@ -68,6 +74,7 @@ describe("mobile connection storage", () => {
     await clearConnection();
 
     expect(asyncStorageMock.removeItem).toHaveBeenCalledWith("codexBlocker.serverHost");
+    expect(asyncStorageMock.removeItem).toHaveBeenCalledWith("codexBlocker.serverPort");
     expect(asyncStorageMock.removeItem).toHaveBeenCalledWith(
       "codexBlocker.serverInstanceId"
     );

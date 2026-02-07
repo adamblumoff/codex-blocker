@@ -42,9 +42,15 @@ export type MobileNetworkOptions = {
 
 const IPV4_MATCH =
   /\b((?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3})\b/;
+const ROUTE_SRC_IPV4_MATCH = /\bsrc\s+((?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3})\b/;
 
 export function parseFirstIpv4Candidate(raw: string): string | null {
   const match = raw.match(IPV4_MATCH);
+  return match ? match[1] : null;
+}
+
+export function parseRouteSourceIpv4(raw: string): string | null {
+  const match = raw.match(ROUTE_SRC_IPV4_MATCH);
   return match ? match[1] : null;
 }
 
@@ -118,6 +124,17 @@ async function checkDiscovery(url: string): Promise<{ ok: boolean; details: stri
 async function resolvePortProxyConnectAddress(): Promise<string> {
   if (!detectWsl()) {
     return "127.0.0.1";
+  }
+
+  const routeProbe = await runCommand("sh", [
+    "-lc",
+    "ip -4 route get 1.1.1.1 2>/dev/null || ip -4 route get 8.8.8.8 2>/dev/null",
+  ]);
+  if (routeProbe.code === 0) {
+    const routeSrc = parseRouteSourceIpv4(routeProbe.stdout);
+    if (routeSrc) {
+      return routeSrc;
+    }
   }
 
   const probe = await runCommand("sh", ["-lc", "hostname -I"]);

@@ -3,12 +3,14 @@ import * as SecureStore from "expo-secure-store";
 import type { MobilePreferences } from "../types";
 
 const SERVER_HOST_KEY = "codexBlocker.serverHost";
+const SERVER_PORT_KEY = "codexBlocker.serverPort";
 const SERVER_TOKEN_KEY = "codexBlocker.serverToken";
 const SERVER_INSTANCE_ID_KEY = "codexBlocker.serverInstanceId";
 const PREFERENCES_KEY = "codexBlocker.preferences";
 
 export type PersistedConnection = {
   host: string | null;
+  port: number | null;
   token: string | null;
   instanceId: string | null;
 };
@@ -26,21 +28,33 @@ async function clearLegacyTokenStorage(): Promise<void> {
 }
 
 export async function loadConnection(): Promise<PersistedConnection> {
-  const [host, instanceId] = await Promise.all([
+  const [host, rawPort, instanceId] = await Promise.all([
     AsyncStorage.getItem(SERVER_HOST_KEY),
+    AsyncStorage.getItem(SERVER_PORT_KEY),
     AsyncStorage.getItem(SERVER_INSTANCE_ID_KEY),
   ]);
+  const parsedPort = rawPort ? Number.parseInt(rawPort, 10) : NaN;
+  const port =
+    Number.isInteger(parsedPort) && parsedPort > 0 && parsedPort < 65536
+      ? parsedPort
+      : null;
   await clearLegacyTokenStorage();
   return {
     host,
+    port,
     token: null,
     instanceId,
   };
 }
 
-export async function saveConnection(host: string, instanceId: string): Promise<void> {
+export async function saveConnection(
+  host: string,
+  instanceId: string,
+  port: number
+): Promise<void> {
   await Promise.all([
     AsyncStorage.setItem(SERVER_HOST_KEY, host),
+    AsyncStorage.setItem(SERVER_PORT_KEY, String(port)),
     AsyncStorage.setItem(SERVER_INSTANCE_ID_KEY, instanceId),
   ]);
 }
@@ -48,6 +62,7 @@ export async function saveConnection(host: string, instanceId: string): Promise<
 export async function clearConnection(): Promise<void> {
   await Promise.all([
     AsyncStorage.removeItem(SERVER_HOST_KEY),
+    AsyncStorage.removeItem(SERVER_PORT_KEY),
     AsyncStorage.removeItem(SERVER_INSTANCE_ID_KEY),
     clearLegacyTokenStorage(),
   ]);

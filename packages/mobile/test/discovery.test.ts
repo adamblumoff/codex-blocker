@@ -40,17 +40,17 @@ describe("discoverServer", () => {
     vi.clearAllMocks();
   });
 
-  it("prioritizes preferred host and returns quickly when available", async () => {
+  it("prioritizes preferred host/port and returns quickly when available", async () => {
     getIpAddressAsyncMock.mockResolvedValue("192.168.68.54");
-    fetchDiscoveryMock.mockImplementation(async (host) => {
+    fetchDiscoveryMock.mockImplementation(async (host, port = 8765) => {
       if (host === "192.168.68.54") {
         return {
           host,
-          port: 8765,
+          port,
           info: {
             name: "Codex Blocker",
             instanceId: "instance-a",
-            port: 8765,
+            port,
             pairingRequired: true,
             pairingExpiresAt: null,
           },
@@ -59,9 +59,10 @@ describe("discoverServer", () => {
       return null;
     });
 
-    const result = await discoverServer("192.168.68.54");
+    const result = await discoverServer("192.168.68.54", 9000);
     expect(result?.host).toBe("192.168.68.54");
-    expect(fetchDiscoveryMock).toHaveBeenCalledWith("192.168.68.54", 8765);
+    expect(result?.port).toBe(9000);
+    expect(fetchDiscoveryMock).toHaveBeenCalledWith("192.168.68.54", 9000);
     expect(
       fetchDiscoveryMock.mock.calls.some(([host]) => String(host).startsWith("192.168.68.1"))
     ).toBe(false);

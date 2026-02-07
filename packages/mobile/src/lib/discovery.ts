@@ -37,6 +37,20 @@ function pause(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function normalizePort(port?: number): number | null {
+  if (typeof port !== "number" || !Number.isInteger(port)) return null;
+  if (port <= 0 || port >= 65536) return null;
+  return port;
+}
+
+function getCandidatePorts(preferredPort?: number): number[] {
+  const preferred = normalizePort(preferredPort);
+  const candidates = [preferred, DEFAULT_PORT].filter(
+    (value): value is number => typeof value === "number"
+  );
+  return Array.from(new Set(candidates));
+}
+
 async function findFirstAvailable(
   hosts: string[],
   port: number,
@@ -84,14 +98,20 @@ async function scanSubnetInBatches(hosts: string[], port: number): Promise<Disco
   return null;
 }
 
-export async function discoverServer(preferredHost?: string): Promise<DiscoveredServer | null> {
+export async function discoverServer(
+  preferredHost?: string,
+  preferredPort?: number
+): Promise<DiscoveredServer | null> {
   const localIp = await Network.getIpAddressAsync().catch(() => "");
+  const candidatePorts = getCandidatePorts(preferredPort);
   const quickCandidates = uniqueHosts([preferredHost ?? "", "codex-blocker.local"]);
 
-  if (quickCandidates.length > 0) {
-    const quickHit = await findFirstAvailable(quickCandidates, DEFAULT_PORT, 2);
-    if (quickHit) {
-      return quickHit;
+  if (quickCandidates.length > 0 && candidatePorts.length > 0) {
+    for (const port of candidatePorts) {
+      const quickHit = await findFirstAvailable(quickCandidates, port, 2);
+      if (quickHit) {
+        return quickHit;
+      }
     }
   }
 
@@ -103,5 +123,12 @@ export async function discoverServer(preferredHost?: string): Promise<Discovered
     return null;
   }
 
-  return scanSubnetInBatches(subnetCandidates, DEFAULT_PORT);
+  for (const port of candidatePorts) {
+    const discovered = await scanSubnetInBatches(subnetCandidates, port);
+    if (discovered) {
+      return discovered;
+    }
+  }
+
+  return null;
 }

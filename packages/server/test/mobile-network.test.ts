@@ -2,12 +2,20 @@ import { describe, expect, it } from "vitest";
 import {
   assessWindowsDiagnostics,
   parseFirstIpv4Candidate,
+  parseRouteSourceIpv4,
 } from "../src/mobile-network.js";
 
 describe("assessWindowsDiagnostics", () => {
   it("parses the first IPv4 candidate from shell output", () => {
     expect(parseFirstIpv4Candidate("172.27.80.2 10.0.0.4\n")).toBe("172.27.80.2");
     expect(parseFirstIpv4Candidate("no ipv4 here")).toBeNull();
+  });
+
+  it("parses default-route source IPv4 from ip route output", () => {
+    const routeOutput =
+      "1.1.1.1 via 172.27.80.1 dev eth0 src 172.27.94.44 uid 1000 cache";
+    expect(parseRouteSourceIpv4(routeOutput)).toBe("172.27.94.44");
+    expect(parseRouteSourceIpv4("no src value")).toBeNull();
   });
 
   it("recommends mobile:fix when port proxy is missing", () => {

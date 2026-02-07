@@ -36,6 +36,10 @@ type WebSocketHandle = {
   close: () => void;
 };
 
+function formatHostLabel(host: string, port: number): string {
+  return port === 8765 ? host : `${host}:${port}`;
+}
+
 function sameStatus(a: CodexStatus, b: CodexStatus): boolean {
   return (
     a.blocked === b.blocked &&
@@ -47,6 +51,7 @@ function sameStatus(a: CodexStatus, b: CodexStatus): boolean {
 
 function connectRealtimeSocket(
   host: string,
+  port: number,
   token: string,
   onState: (status: CodexStatus) => void,
   onSocketReady: () => void,
@@ -61,7 +66,7 @@ function connectRealtimeSocket(
   const connect = () => {
     if (closing) return;
 
-    websocket = new WebSocket(buildWsUrl(host), buildWsProtocols(token));
+    websocket = new WebSocket(buildWsUrl(host, port), buildWsProtocols(token));
 
     websocket.onopen = () => {
       retries = 0;
@@ -154,7 +159,7 @@ export function useCodexConnection() {
       setState((current) => ({
         ...current,
         phase: "pairing",
-        host: hostToPair,
+        host: formatHostLabel(hostToPair, portToPair),
         error: errorMessage,
       }));
 
@@ -168,7 +173,7 @@ export function useCodexConnection() {
       setState((current) => ({
         ...current,
         phase: "pairing",
-        host: hostToPair,
+        host: formatHostLabel(hostToPair, portToPair),
         error: errorMessage,
         pairingExpiresAt: pairing.expiresAt,
       }));
@@ -177,7 +182,7 @@ export function useCodexConnection() {
   );
 
   const pairAfterAuthFailure = useCallback(
-    async (preferredHost?: string) => {
+    async (preferredHost?: string, preferredPort?: number) => {
       closeSocket();
       pairingRef.current = null;
       sessionTokenRef.current = null;
@@ -191,8 +196,10 @@ export function useCodexConnection() {
       }));
 
       const discovered =
-        (preferredHost ? await fetchDiscovery(preferredHost) : null) ??
-        (await discoverServer(preferredHost));
+        (preferredHost
+          ? await fetchDiscovery(preferredHost, preferredPort ?? undefined)
+          : null) ??
+        (await discoverServer(preferredHost, preferredPort));
       if (!discovered) {
         setState((current) => ({
           ...current,
@@ -214,16 +221,16 @@ export function useCodexConnection() {
   );
 
   const connectWithToken = useCallback(
-    async (nextHost: string, token: string): Promise<boolean> => {
+    async (nextHost: string, nextPort: number, token: string): Promise<boolean> => {
       setState((current) => ({
         ...current,
         phase: "connecting",
-        host: nextHost,
+        host: formatHostLabel(nextHost, nextPort),
         error: null,
         pairingExpiresAt: null,
       }));
 
-      const initialStatus = await fetchStatus(nextHost, token);
+      const initialStatus = await fetchStatus(nextHost, token, nextPort);
       if (!initialStatus) {
         return false;
       }
@@ -232,7 +239,7 @@ export function useCodexConnection() {
         ...current,
         phase: "connected",
         status: initialStatus,
-        host: nextHost,
+        host: formatHostLabel(nextHost, nextPort),
         error: null,
         lastUpdatedAt: Date.now(),
         pairingExpiresAt: null,
@@ -243,6 +250,7 @@ export function useCodexConnection() {
       closeSocket();
       socketRef.current = connectRealtimeSocket(
         nextHost,
+        nextPort,
         token,
         (nextStatus) => {
           setState((current) => {
@@ -270,7 +278,7 @@ export function useCodexConnection() {
         setConnecting,
         () => {
           sessionTokenRef.current = null;
-          void pairAfterAuthFailure(nextHost);
+          void pairAfterAuthFailure(nextHost, nextPort);
         }
       );
 
@@ -292,9 +300,11 @@ export function useCodexConnection() {
         pairingExpiresAt: null,
       }));
 
-      let discovered = saved.host ? await fetchDiscovery(saved.host) : null;
+      let discovered = saved.host
+        ? await fetchDiscovery(saved.host, saved.port ?? undefined)
+        : null;
       if (!discovered) {
-        discovered = await discoverServer(saved.host ?? undefined);
+        discovered = await discoverServer(saved.host ?? undefined, saved.port ?? undefined);
       }
       if (!discovered) {
         setState((current) => ({
@@ -324,9 +334,17 @@ export function useCodexConnection() {
 
       const candidateToken = sessionTokenRef.current;
       if (candidateToken) {
-        const connected = await connectWithToken(discovered.host, candidateToken);
+        const connected = await connectWithToken(
+          discovered.host,
+          discovered.port,
+          candidateToken
+        );
         if (connected) {
-          await saveConnection(discovered.host, discovered.info.instanceId);
+          await saveConnection(
+            discovered.host,
+            discovered.info.instanceId,
+            discovered.port
+          );
           return;
         }
         sessionTokenRef.current = null;
@@ -369,7 +387,7 @@ export function useCodexConnection() {
         setState((current) => ({
           ...current,
           phase: "pairing",
-          host: pending.host,
+          host: formatHostLabel(pending.host, pending.port),
           error: "Enter the 6-digit code shown in the server terminal.",
           pairingExpiresAt: pending.expiresAt,
         }));
@@ -379,14 +397,18 @@ export function useCodexConnection() {
       setState((current) => ({
         ...current,
         phase: "connecting",
-        host: pending.host,
+        host: formatHostLabel(pending.host, pending.port),
         error: null,
       }));
 
       try {
         const confirmed = await confirmPairing(pending.host, code, pending.port);
-        await saveConnection(pending.host, pending.instanceId);
-        const connected = await connectWithToken(pending.host, confirmed.token);
+        await saveConnection(pending.host, pending.instanceId, pending.port);
+        const connected = await connectWithToken(
+          pending.host,
+          pending.port,
+          confirmed.token
+        );
         if (!connected) {
           throw new Error("Paired successfully, but failed to read server status.");
         }
@@ -397,7 +419,7 @@ export function useCodexConnection() {
         setState((current) => ({
           ...current,
           phase: "pairing",
-          host: pending.host,
+          host: formatHostLabel(pending.host, pending.port),
           error:
             message === "Unable to confirm mobile pairing."
               ? "Invalid or expired code. Start pairing again in the server terminal."
