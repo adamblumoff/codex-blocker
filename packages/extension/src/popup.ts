@@ -8,7 +8,13 @@ interface PopupState {
   bypassActive: boolean;
   forceBlock: boolean;
   forceOpen: boolean;
+  pairingRequired?: boolean;
+  pairingExpiresAt?: number | null;
 }
+
+type PairingResponse =
+  | { success: true; expiresAt?: number }
+  | { success: false; error?: string };
 
 const statusDot = document.getElementById("status-dot") as HTMLElement;
 const statusText = document.getElementById("status-text") as HTMLElement;
@@ -18,10 +24,42 @@ const blockBadge = document.getElementById("block-badge") as HTMLElement;
 const blockStatus = document.getElementById("block-status") as HTMLElement;
 const settingsBtn = document.getElementById("settings-btn") as HTMLButtonElement;
 const roastToggle = document.getElementById("roast-toggle") as HTMLInputElement;
+const pairingPanel = document.getElementById("pairing-panel") as HTMLElement;
+const pairingCodeInput = document.getElementById("pairing-code") as HTMLInputElement;
+const pairingSubmitButton = document.getElementById("pairing-submit") as HTMLButtonElement;
+const pairingRefreshButton = document.getElementById("pairing-refresh") as HTMLButtonElement;
+const pairingMessage = document.getElementById("pairing-message") as HTMLElement;
+
+function formatPairingExpiry(value: number | null | undefined): string {
+  if (!value) return "";
+  return new Date(value).toLocaleTimeString();
+}
+
+function setPairingMessage(message: string): void {
+  pairingMessage.textContent = message;
+}
+
+function updatePairingUI(state: PopupState): void {
+  const pairingRequired = Boolean(state.pairingRequired);
+  pairingPanel.hidden = !pairingRequired;
+  if (!pairingRequired) {
+    pairingCodeInput.value = "";
+    return;
+  }
+
+  const expiry = formatPairingExpiry(state.pairingExpiresAt ?? null);
+  if (expiry) {
+    setPairingMessage(`Enter the 6-digit terminal code (expires ${expiry}).`);
+  } else {
+    setPairingMessage("Enter the 6-digit code from the codex-blocker terminal.");
+  }
+}
 
 function updateUI(state: PopupState): void {
-  // Status indicator
-  if (!state.serverConnected) {
+  if (state.pairingRequired) {
+    statusDot.className = "status-dot disconnected";
+    statusText.textContent = "Pairing required";
+  } else if (!state.serverConnected) {
     statusDot.className = "status-dot disconnected";
     statusText.textContent = "Offline";
   } else if (state.working > 0) {
@@ -32,11 +70,9 @@ function updateUI(state: PopupState): void {
     statusText.textContent = "Connected";
   }
 
-  // Stats
   sessionsEl.textContent = String(state.sessions);
   workingEl.textContent = String(state.working);
 
-  // Block badge
   if (state.forceBlock && !state.forceOpen) {
     blockBadge.className = "block-badge blocked";
     blockStatus.textContent = "Always";
@@ -50,6 +86,8 @@ function updateUI(state: PopupState): void {
     blockBadge.className = "block-badge open";
     blockStatus.textContent = "Open";
   }
+
+  updatePairingUI(state);
 }
 
 function refreshState(): void {
@@ -66,6 +104,48 @@ function refreshRoastMode(): void {
   });
 }
 
+function submitPairingCode(): void {
+  const code = pairingCodeInput.value.trim();
+  if (!/^\d{6}$/.test(code)) {
+    setPairingMessage("Enter a 6-digit code.");
+    return;
+  }
+
+  pairingSubmitButton.disabled = true;
+  chrome.runtime.sendMessage(
+    { type: "CONFIRM_PAIRING", code },
+    (response?: PairingResponse) => {
+      pairingSubmitButton.disabled = false;
+      if (response?.success) {
+        pairingCodeInput.value = "";
+        setPairingMessage("Paired. Connecting...");
+        refreshState();
+        return;
+      }
+      setPairingMessage(response?.error ?? "Could not confirm code.");
+    }
+  );
+}
+
+function refreshPairingCode(): void {
+  chrome.runtime.sendMessage(
+    { type: "START_PAIRING" },
+    (response?: PairingResponse) => {
+      if (response?.success) {
+        const expiry = formatPairingExpiry(response.expiresAt ?? null);
+        setPairingMessage(
+          expiry
+            ? `Use the latest terminal code (expires ${expiry}).`
+            : "Use the latest terminal code."
+        );
+        refreshState();
+        return;
+      }
+      setPairingMessage(response?.error ?? "Could not start pairing.");
+    }
+  );
+}
+
 settingsBtn.addEventListener("click", () => {
   chrome.runtime.openOptionsPage();
 });
@@ -79,6 +159,15 @@ roastToggle.addEventListener("change", () => {
     }
     roastToggle.disabled = false;
   });
+});
+
+pairingSubmitButton.addEventListener("click", submitPairingCode);
+pairingRefreshButton.addEventListener("click", refreshPairingCode);
+pairingCodeInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    submitPairingCode();
+  }
 });
 
 chrome.runtime.onMessage.addListener((message) => {
