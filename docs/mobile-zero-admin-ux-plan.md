@@ -15,7 +15,7 @@ Mobile setup should be one-click from the user perspective, without requiring us
   - `mobile:doctor` diagnostics command
   - `mobile:fix` automated Windows proxy/firewall setup (with elevation prompt when needed)
   - `mobile:remove` cleanup command for undo/reset
-  - Startup auto-heal on `--mobile` (doctor first, fix on failure)
+  - Startup auto-heal on `npx codex-blocker` (doctor first, fix on failure)
 - Remaining:
   - In-app guided setup UX
   - Relay fallback mode
@@ -67,7 +67,7 @@ Acceptance criteria:
 ## Phase 2: Guided UX in App and Server
 
 ### Server UX
-- On `--mobile` startup, print:
+- On server startup, print:
   - detected LAN status
   - whether mobile should work now
   - exact next step (`mobile:fix`) if not
@@ -113,7 +113,7 @@ Acceptance criteria:
 ## Security Requirements
 
 - Pairing codes remain short-lived and one-time.
-- Tokens are stored securely on device.
+- Tokens are session-scoped (server in-memory, extension session storage, mobile memory-only).
 - `mobile:fix` only opens required port and scope.
 - Public-profile firewall rules should default to `LocalSubnet`.
 

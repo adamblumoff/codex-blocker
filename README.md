@@ -59,8 +59,8 @@ Default blocked sites: `x.com`, `youtube.com`
 ### 4. Run the iOS app (Expo Go)
 
 ```bash
-# Start server in mobile/LAN mode
-npx codex-blocker --mobile
+# Start server (extension + mobile endpoints are both enabled)
+npx codex-blocker
 
 # In another terminal
 pnpm --filter @codex-blocker/mobile dev
@@ -75,17 +75,14 @@ When pairing is required, enter the 6-digit code shown in the server terminal.
 # Start on custom port
 npx codex-blocker --port 9000
 
-# Enable mobile mode (LAN bind + mDNS + pairing endpoints)
-npx codex-blocker --mobile
-
-# Enable mobile mode without startup auto doctor/fix
-npx codex-blocker --mobile --mobile-no-auto-fix
+# Start server without startup auto doctor/fix
+npx codex-blocker --no-auto-fix
 
 # Override bind host
-npx codex-blocker --mobile --bind 0.0.0.0
+npx codex-blocker --bind 0.0.0.0
 
 # Set mobile discovery name
-npx codex-blocker --mobile --mobile-name "Adam's Codex Blocker"
+npx codex-blocker --mobile-name "Adam's Codex Blocker"
 
 # Diagnose local mobile networking (Windows/WSL)
 npx codex-blocker mobile:doctor
@@ -99,9 +96,6 @@ npx codex-blocker mobile:fix --allow-public
 # Remove Windows portproxy + firewall rules created by mobile:fix
 npx codex-blocker mobile:remove
 
-# Rotate the auth token (forces re-pair/reconnect for existing clients)
-npx codex-blocker mobile:rotate-token
-
 # Show setup info
 npx codex-blocker --setup
 
@@ -114,7 +108,8 @@ npx codex-blocker --version
 
 SECURITY NOTE: IF YOU ENABLE MOBILE ACCESS, RUN `npx codex-blocker mobile:remove` WHEN YOU ARE DONE TO REMOVE FIREWALL/PORTPROXY EXPOSURE.
 `mobile:fix` opens Private-profile firewall by default; Public-profile access requires `--allow-public`.
-If you suspect token exposure, run `npx codex-blocker mobile:rotate-token` and re-pair clients.
+Pairing tokens are session-scoped: restarting the server invalidates old tokens and requires fresh pairing.
+Mobile app cold starts and full browser restarts also require re-pairing.
 
 ## Features
 
@@ -131,7 +126,8 @@ If you suspect token exposure, run `npx codex-blocker mobile:rotate-token` and r
 - **Works offline** — Blocks everything when server isn't running (safety default)
 - **Mobile LAN mode** — Optional pairing/discovery endpoints for iPhone app connections
 - **Expo iOS app (TypeScript)** — Realtime status, notifications toggle, and mobile blocking-mode controls
-- **Loopback-only extension bootstrap** — Initial extension token bootstrap is restricted to local loopback clients
+- **Restart-scoped pairing** — Extension + mobile both require a fresh 6-digit code after server restart
+- **Extension session auth** — Token stored in browser session storage only (full browser restart requires re-pair)
 - **Pinned mobile server identity** — App trusts first seen server instance and requires re-pair on identity changes
 
 ## Requirements

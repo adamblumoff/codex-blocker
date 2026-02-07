@@ -1,126 +1,107 @@
-# Mobile Connectivity (iOS + Local Server)
+# Mobile Connectivity (iOS + Extension + Local Server)
 
 ## Read When
 - You are working on iPhone/mobile connectivity.
-- You need to understand pairing, discovery, or token auth behavior.
-- You are debugging Windows + WSL + iPhone LAN issues.
+- You are debugging pairing/auth between server, extension, and mobile.
+- You are diagnosing Windows + WSL + LAN reachability.
 
 ## Overview
 
-`codex-blocker` can now expose a mobile mode for LAN clients (the Expo iOS app):
+`codex-blocker` now starts one unified server mode by default:
 
-- `npx codex-blocker --mobile`
-- `npx codex-blocker mobile:doctor` for diagnostics
-- `npx codex-blocker mobile:fix` for automated Windows networking setup
-- `npx codex-blocker mobile:fix --allow-public` only when you must allow Public-profile Wi-Fi access
+- `npx codex-blocker`
+- `npx codex-blocker mobile:doctor`
+- `npx codex-blocker mobile:fix`
+- `npx codex-blocker mobile:fix --allow-public` only when Public-profile Wi-Fi access is required
 - `npx codex-blocker mobile:remove` to undo networking setup created by `mobile:fix`
-- `npx codex-blocker mobile:rotate-token` to revoke current client tokens and force re-pair
-- Defaults to binding on `0.0.0.0` in mobile mode.
-- Publishes mDNS service `_codex-blocker._tcp`.
-- Exposes mobile endpoints:
+
+Default behavior:
+
+- Binds to `0.0.0.0`
+- Publishes mDNS service `_codex-blocker._tcp`
+- Exposes pairing/discovery endpoints:
   - `GET /mobile/discovery`
   - `POST /mobile/pair/start`
   - `POST /mobile/pair/confirm`
-- Existing auth-protected endpoints remain unchanged:
+- Exposes auth-protected endpoints:
   - `GET /status`
-  - `GET ws://<host>:8765/ws` (token sent via WebSocket subprotocol)
+  - `GET ws://<host>:8765/ws` (token via query/header/subprotocol)
 
-SECURITY NOTE: RUN `npx codex-blocker mobile:remove` WHEN YOU ARE DONE WITH MOBILE ACCESS TO REMOVE FIREWALL + PORTPROXY RULES.
+SECURITY NOTE: RUN `npx codex-blocker mobile:remove` WHEN YOU ARE DONE USING MOBILE LAN ACCESS.
 
-## End-to-End Flow
+## End-to-End Pairing Flow
 
-1. Server starts in mobile mode.
-2. iPhone app discovers server over local network.
-3. App calls `POST /mobile/pair/start` to activate or reuse the current pairing window.
-4. User reads the 6-digit code from the server terminal and enters it in the app.
-5. App confirms code via `POST /mobile/pair/confirm`.
-6. Server returns token + URLs.
-7. App stores host/token and reconnects with:
-   - `Authorization: Bearer <token>` for `/status`
-   - `codex-blocker-token.<token>` WebSocket subprotocol for `/ws`
-8. WebSocket delivers realtime state updates.
+1. Server starts and prints a 6-digit pairing code in terminal.
+2. Client discovers server (`/mobile/discovery`).
+3. Client ensures pairing window (`/mobile/pair/start`).
+4. User enters terminal code into app/extension.
+5. Client confirms code (`/mobile/pair/confirm`) and receives session token.
+6. Client connects to `/status` + `/ws` with that token.
 
 Pairing brute-force guard:
 
-- 6 failed code confirmations in one minute lock pairing confirmations for that client for 2 minutes.
+- 6 failed confirms per minute lock pairing confirms for that client for 2 minutes.
 
-When the server starts with `--mobile`, it now runs `mobile:doctor` automatically.
-If doctor reports fixable host networking issues, it automatically runs `mobile:fix`.
-Use `--mobile-no-auto-fix` to disable this startup behavior.
+## Session Security Model
 
-## Auth Model
+- Server token is in-memory only (not persisted to disk).
+- Restarting server invalidates all prior client tokens.
+- Mobile app cold start always requires pairing code.
+  - Mobile persists only host + `instanceId`.
+  - Mobile does **not** persist auth token.
+- Extension stores token in `chrome.storage.session`.
+  - Service-worker restarts in same browser session keep token.
+  - Full browser restart requires re-pairing.
 
-- Extension bootstrap flow still works (origin-restricted token bootstrap).
-- Extension token bootstrap is loopback-only (`127.0.0.1`/`::1`) even in `--mobile` mode.
-- Mobile flow uses explicit one-time pairing code (TTL: 2 minutes).
-- Once paired, mobile uses the same server token as other clients.
-- Server token files are written with owner-only permissions where supported.
-- Mobile app stores auth token in secure storage and pins the first trusted server `instanceId`.
-- If discovered `instanceId` changes, the app clears saved creds and requires re-pairing.
+## Startup Doctor/Fix Behavior
 
-## Discovery Behavior (Current App)
+On Windows/WSL environments, server startup runs doctor automatically:
 
-The Expo app currently tries:
+1. `mobile:doctor`
+2. If unhealthy, `mobile:fix`
 
-- Preferred previously-known host (if stored)
-- `codex-blocker.local`
-- Subnet scan based on phone IP (`x.y.z.1...254`) with concurrency
+Disable this with:
 
-This is intentionally simple and LAN-first.
+- `npx codex-blocker --no-auto-fix`
+- `npx codex-blocker --mobile-no-auto-fix` (legacy alias)
 
-## Windows + WSL Networking Notes
-
-### Why this can fail
-
-In WSL NAT mode, server traffic may be reachable from Windows `localhost` but not directly from your phone on Wi-Fi.
+## Windows + WSL Notes
 
 Common symptom:
 
-- Works on Windows:
-  - `Invoke-RestMethod http://localhost:8765/mobile/discovery`
-- Fails on iPhone:
-  - `http://<windows-wifi-ip>:8765/mobile/discovery`
+- Windows localhost works (`http://localhost:8765/mobile/discovery`)
+- iPhone LAN URL fails (`http://<windows-wifi-ip>:8765/mobile/discovery`)
 
-### Typical fix path
+Typical recovery:
 
-1. Keep server running in WSL with `--mobile`.
-2. Run `npx codex-blocker mobile:doctor` (or just start with `--mobile` and let auto-check run).
-3. If doctor flags proxy/firewall issues, run `npx codex-blocker mobile:fix`.
-   - On Public-profile Wi-Fi, use `npx codex-blocker mobile:fix --allow-public`.
-4. Re-run `mobile:doctor` until all checks pass.
+1. Run server: `npx codex-blocker`
+2. Run doctor: `npx codex-blocker mobile:doctor`
+3. If needed, run fix:
+   - Private-only: `npx codex-blocker mobile:fix`
+   - Public Wi-Fi: `npx codex-blocker mobile:fix --allow-public`
+4. Re-run doctor until all checks are `[OK]`.
 
-`mobile:fix` now auto-targets the active WSL IPv4 for `portproxy` when running from WSL.
-This avoids relying on Windows localhost forwarding (`127.0.0.1`) when that forwarding is unavailable.
+If Windows LAN succeeds but iPhone still fails:
 
-Example validation:
-
-- `netsh interface portproxy show v4tov4`
-- `Get-NetTCPConnection -State Listen -LocalPort 8765`
-- `Invoke-RestMethod http://<windows-wifi-ip>:8765/mobile/discovery`
-
-If Windows succeeds but iPhone fails, check:
-
-- Firewall profile mismatch (Public network but Private-only rule).
-- Router/client isolation mode (guest SSID, AP isolation).
+- Check AP/client isolation on the Wi-Fi network.
+- On restrictive campus/guest networks (for example eduroam variants), peer LAN traffic may be blocked.
+- Use a personal hotspot where both laptop and phone are on the same local network.
 
 ## Troubleshooting Checklist
 
-1. Server health from WSL:
+1. WSL server local:
    - `curl http://127.0.0.1:8765/mobile/discovery`
-2. Windows local reachability:
+2. Windows localhost:
    - `Invoke-RestMethod http://localhost:8765/mobile/discovery`
-3. Windows LAN reachability:
+3. Windows LAN:
    - `Invoke-RestMethod http://<windows-wifi-ip>:8765/mobile/discovery`
-4. iPhone Safari reachability:
+4. iPhone Safari:
    - `http://<windows-wifi-ip>:8765/mobile/discovery`
-5. App-level connectivity:
-   - Start app with `pnpm dev:mobile` (tunnel + clear)
-   - Verify phase transitions: `discovering -> pairing/connected`
+5. App-level:
+   - `pnpm dev:mobile` (tunnel + clear)
+   - Verify phase flow: `discovering -> pairing -> connected`
 
-## Reset Networking State (Testing `mobile:fix`)
-
-Use this if you want to intentionally clear current Windows rules and verify that
-`mobile:fix` recreates everything.
+## Reset Networking State (for testing fix/remove)
 
 Preferred:
 
@@ -128,21 +109,12 @@ Preferred:
 npx codex-blocker mobile:remove
 ```
 
-Run in Administrator PowerShell:
+Equivalent Administrator PowerShell cleanup:
 
 ```powershell
 netsh interface portproxy delete v4tov4 listenaddress=0.0.0.0 listenport=8765
 netsh interface portproxy delete v4tov4 listenaddress=127.0.0.1 listenport=8765
-
-Remove-NetFirewallRule -DisplayName \"Codex Blocker 8765 Private LocalSubnet\" -ErrorAction SilentlyContinue
-Remove-NetFirewallRule -DisplayName \"Codex Blocker 8765 Public LocalSubnet\" -ErrorAction SilentlyContinue
-Remove-NetFirewallRule -DisplayName \"Codex Blocker 8765\" -ErrorAction SilentlyContinue
-```
-
-Then run:
-
-```bash
-npx codex-blocker mobile:doctor
-npx codex-blocker mobile:fix
-npx codex-blocker mobile:doctor
+Remove-NetFirewallRule -DisplayName "Codex Blocker 8765 Private LocalSubnet" -ErrorAction SilentlyContinue
+Remove-NetFirewallRule -DisplayName "Codex Blocker 8765 Public LocalSubnet" -ErrorAction SilentlyContinue
+Remove-NetFirewallRule -DisplayName "Codex Blocker 8765" -ErrorAction SilentlyContinue
 ```
