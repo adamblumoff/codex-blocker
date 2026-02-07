@@ -40,7 +40,8 @@ function connectRealtimeSocket(
   host: string,
   token: string,
   onState: (status: CodexStatus) => void,
-  onConnecting: () => void
+  onConnecting: () => void,
+  onAuthInvalidated: () => void
 ): WebSocketHandle {
   let websocket: WebSocket | null = null;
   let reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -65,8 +66,12 @@ function connectRealtimeSocket(
       }
     };
 
-    websocket.onclose = () => {
+    websocket.onclose = (event) => {
       if (closing) return;
+      if ((event as { code?: number }).code === 1008) {
+        onAuthInvalidated();
+        return;
+      }
       onConnecting();
       const delay = Math.min(
         RECONNECT_BASE_DELAY_MS * Math.pow(2, retries),
@@ -109,6 +114,7 @@ export function useCodexConnection() {
     pairingExpiresAt: null,
   });
   const socketRef = useRef<WebSocketHandle | null>(null);
+  const sessionTokenRef = useRef<string | null>(null);
   const pairingRef = useRef<{
     host: string;
     port: number;
@@ -127,52 +133,6 @@ export function useCodexConnection() {
       phase: current.phase === "error" ? "error" : "connecting",
     }));
   }, []);
-
-  const connectWithToken = useCallback(
-    async (nextHost: string, token: string): Promise<boolean> => {
-      setState((current) => ({
-        ...current,
-        phase: "connecting",
-        host: nextHost,
-        error: null,
-        pairingExpiresAt: null,
-      }));
-
-      const initialStatus = await fetchStatus(nextHost, token);
-      if (!initialStatus) {
-        return false;
-      }
-
-      setState((current) => ({
-        ...current,
-        phase: "connected",
-        status: initialStatus,
-        host: nextHost,
-        error: null,
-        lastUpdatedAt: Date.now(),
-        pairingExpiresAt: null,
-      }));
-      pairingRef.current = null;
-
-      closeSocket();
-      socketRef.current = connectRealtimeSocket(
-        nextHost,
-        token,
-        (nextStatus) => {
-          setState((current) => ({
-            ...current,
-            phase: "connected",
-            status: nextStatus,
-            lastUpdatedAt: Date.now(),
-          }));
-        },
-        setConnecting
-      );
-
-      return true;
-    },
-    [closeSocket, setConnecting]
-  );
 
   const beginPairing = useCallback(
     async (
@@ -204,6 +164,94 @@ export function useCodexConnection() {
       }));
     },
     []
+  );
+
+  const pairAfterAuthFailure = useCallback(
+    async (preferredHost?: string) => {
+      closeSocket();
+      pairingRef.current = null;
+      sessionTokenRef.current = null;
+      await clearConnection();
+
+      setState((current) => ({
+        ...current,
+        phase: "discovering",
+        error: "Connection expired. Re-pair with the latest server code.",
+        pairingExpiresAt: null,
+      }));
+
+      const discovered =
+        (preferredHost ? await fetchDiscovery(preferredHost) : null) ??
+        (await discoverServer(preferredHost));
+      if (!discovered) {
+        setState((current) => ({
+          ...current,
+          phase: "error",
+          error: "Could not rediscover codex-blocker on this Wi-Fi network.",
+          pairingExpiresAt: null,
+        }));
+        return;
+      }
+
+      await beginPairing(
+        discovered.host,
+        discovered.port,
+        discovered.info.instanceId,
+        "Server session reset. Enter the new 6-digit code from your terminal."
+      );
+    },
+    [beginPairing, closeSocket]
+  );
+
+  const connectWithToken = useCallback(
+    async (nextHost: string, token: string): Promise<boolean> => {
+      setState((current) => ({
+        ...current,
+        phase: "connecting",
+        host: nextHost,
+        error: null,
+        pairingExpiresAt: null,
+      }));
+
+      const initialStatus = await fetchStatus(nextHost, token);
+      if (!initialStatus) {
+        return false;
+      }
+
+      setState((current) => ({
+        ...current,
+        phase: "connected",
+        status: initialStatus,
+        host: nextHost,
+        error: null,
+        lastUpdatedAt: Date.now(),
+        pairingExpiresAt: null,
+      }));
+      pairingRef.current = null;
+      sessionTokenRef.current = token;
+
+      closeSocket();
+      socketRef.current = connectRealtimeSocket(
+        nextHost,
+        token,
+        (nextStatus) => {
+          setState((current) => ({
+            ...current,
+            phase: "connected",
+            status: nextStatus,
+            lastUpdatedAt: Date.now(),
+          }));
+        },
+        setConnecting,
+        () => {
+          sessionTokenRef.current = null;
+          void pairAfterAuthFailure(nextHost);
+        }
+      );
+
+      return true;
+    },
+    [closeSocket, pairAfterAuthFailure, setConnecting]
   );
 
   const bootstrap = useCallback(async () => {
@@ -249,17 +297,14 @@ export function useCodexConnection() {
         return;
       }
 
-      const activeToken = saved.token;
-      if (activeToken) {
-        const connected = await connectWithToken(discovered.host, activeToken);
+      const candidateToken = sessionTokenRef.current;
+      if (candidateToken) {
+        const connected = await connectWithToken(discovered.host, candidateToken);
         if (connected) {
-          await saveConnection(
-            discovered.host,
-            activeToken,
-            discovered.info.instanceId
-          );
+          await saveConnection(discovered.host, discovered.info.instanceId);
           return;
         }
+        sessionTokenRef.current = null;
         await clearConnection();
       }
 
@@ -315,11 +360,7 @@ export function useCodexConnection() {
 
       try {
         const confirmed = await confirmPairing(pending.host, code, pending.port);
-        await saveConnection(
-          pending.host,
-          confirmed.token,
-          pending.instanceId
-        );
+        await saveConnection(pending.host, pending.instanceId);
         const connected = await connectWithToken(pending.host, confirmed.token);
         if (!connected) {
           throw new Error("Paired successfully, but failed to read server status.");

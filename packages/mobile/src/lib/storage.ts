@@ -18,44 +18,30 @@ export const DEFAULT_PREFERENCES: MobilePreferences = {
   blockingEnabled: false,
 };
 
-async function loadTokenWithMigration(): Promise<string | null> {
-  const secureToken = await SecureStore.getItemAsync(SERVER_TOKEN_KEY);
-  if (secureToken) {
-    return secureToken;
-  }
-
-  const legacyToken = await AsyncStorage.getItem(SERVER_TOKEN_KEY);
-  if (!legacyToken) {
-    return null;
-  }
-
-  await SecureStore.setItemAsync(SERVER_TOKEN_KEY, legacyToken);
-  await AsyncStorage.removeItem(SERVER_TOKEN_KEY);
-  return legacyToken;
+async function clearLegacyTokenStorage(): Promise<void> {
+  await Promise.all([
+    AsyncStorage.removeItem(SERVER_TOKEN_KEY),
+    SecureStore.deleteItemAsync(SERVER_TOKEN_KEY),
+  ]);
 }
 
 export async function loadConnection(): Promise<PersistedConnection> {
-  const [host, instanceId, token] = await Promise.all([
+  const [host, instanceId] = await Promise.all([
     AsyncStorage.getItem(SERVER_HOST_KEY),
     AsyncStorage.getItem(SERVER_INSTANCE_ID_KEY),
-    loadTokenWithMigration(),
   ]);
+  await clearLegacyTokenStorage();
   return {
     host,
-    token,
+    token: null,
     instanceId,
   };
 }
 
-export async function saveConnection(
-  host: string,
-  token: string,
-  instanceId: string
-): Promise<void> {
+export async function saveConnection(host: string, instanceId: string): Promise<void> {
   await Promise.all([
     AsyncStorage.setItem(SERVER_HOST_KEY, host),
     AsyncStorage.setItem(SERVER_INSTANCE_ID_KEY, instanceId),
-    SecureStore.setItemAsync(SERVER_TOKEN_KEY, token),
   ]);
 }
 
@@ -63,8 +49,7 @@ export async function clearConnection(): Promise<void> {
   await Promise.all([
     AsyncStorage.removeItem(SERVER_HOST_KEY),
     AsyncStorage.removeItem(SERVER_INSTANCE_ID_KEY),
-    AsyncStorage.removeItem(SERVER_TOKEN_KEY),
-    SecureStore.deleteItemAsync(SERVER_TOKEN_KEY),
+    clearLegacyTokenStorage(),
   ]);
 }
 

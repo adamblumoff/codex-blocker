@@ -30,13 +30,9 @@ describe("mobile connection storage", () => {
     vi.clearAllMocks();
   });
 
-  it("stores auth token in secure storage and host/instance in async storage", async () => {
-    await saveConnection("192.168.68.54", "token-123", "instance-a");
+  it("stores only host + instance metadata for reconnect discovery", async () => {
+    await saveConnection("192.168.68.54", "instance-a");
 
-    expect(secureStoreMock.setItemAsync).toHaveBeenCalledWith(
-      "codexBlocker.serverToken",
-      "token-123"
-    );
     expect(asyncStorageMock.setItem).toHaveBeenCalledWith(
       "codexBlocker.serverHost",
       "192.168.68.54"
@@ -45,25 +41,30 @@ describe("mobile connection storage", () => {
       "codexBlocker.serverInstanceId",
       "instance-a"
     );
+    expect(secureStoreMock.setItemAsync).not.toHaveBeenCalled();
   });
 
-  it("loads host/token/instance from mixed storage backends", async () => {
+  it("loads host + instance and forces fresh token pairing on app cold start", async () => {
     asyncStorageMock.getItem.mockImplementation(async (key) => {
       if (key === "codexBlocker.serverHost") return "192.168.68.54";
       if (key === "codexBlocker.serverInstanceId") return "instance-a";
       return null;
     });
-    secureStoreMock.getItemAsync.mockResolvedValue("token-123");
+    secureStoreMock.getItemAsync.mockResolvedValue("legacy-token");
 
     const loaded = await loadConnection();
     expect(loaded).toEqual({
       host: "192.168.68.54",
-      token: "token-123",
+      token: null,
       instanceId: "instance-a",
     });
+
+    expect(secureStoreMock.deleteItemAsync).toHaveBeenCalledWith(
+      "codexBlocker.serverToken"
+    );
   });
 
-  it("clears both host metadata and secure token", async () => {
+  it("clears host metadata and any legacy token storage", async () => {
     await clearConnection();
 
     expect(asyncStorageMock.removeItem).toHaveBeenCalledWith("codexBlocker.serverHost");
