@@ -47,7 +47,7 @@ Options:
   --remove    Remove Codex setup (no-op)
   --port      Server port (default: ${DEFAULT_PORT})
   --mobile    Deprecated alias (mobile mode is always enabled)
-  --extension-only  Run localhost-only extension mode (disable mobile LAN mDNS + auto-fix)
+  --extension-only  Run localhost-only extension mode (disable mobile LAN mDNS + QR output + auto-fix)
   --allow-public  Allow firewall opening on Public profile (higher risk)
   --no-auto-fix  Disable automatic mobile doctor+fix on startup
   --mobile-no-auto-fix  Backward-compatible alias for --no-auto-fix
@@ -166,6 +166,8 @@ async function main(): Promise<void> {
     bindHost,
     mobileServiceName,
     publishMdns: !extensionOnly,
+    mobileQrOutput: !extensionOnly,
+    autoStartMobilePairing: true,
   });
 
   const autoFixDisabled =

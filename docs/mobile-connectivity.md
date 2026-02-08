@@ -42,6 +42,7 @@ Behavior:
 
 - Default bind host changes to `127.0.0.1` (unless `--bind` is explicitly provided).
 - mDNS publishing is disabled.
+- Terminal QR pairing output is disabled (numeric code output remains).
 - Startup `mobile:doctor`/`mobile:fix` auto-run is disabled.
 - Extension pairing still works on localhost.
 

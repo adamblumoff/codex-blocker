@@ -242,6 +242,8 @@ export type ServerOptions = {
   mobileServiceName?: string;
   publishMdns?: boolean;
   mobilePairingManager?: MobilePairingManager;
+  mobileQrOutput?: boolean;
+  autoStartMobilePairing?: boolean;
 };
 
 export type ServerHandle = {
@@ -261,6 +263,8 @@ export function startServer(
   const bindHost = options?.bindHost ?? (mobileEnabled ? "0.0.0.0" : "127.0.0.1");
   const mobileServiceName = options?.mobileServiceName ?? "Codex Blocker";
   const publishMdns = options?.publishMdns ?? mobileEnabled;
+  const mobileQrOutput = options?.mobileQrOutput ?? true;
+  const autoStartMobilePairing = options?.autoStartMobilePairing ?? true;
   const mobileInstanceId = createServerInstanceId();
 
   let authToken: string | null = null;
@@ -277,7 +281,7 @@ export function startServer(
     : null;
 
   const printPairingQr = (host: string, portToUse: number, qrNonce: string, qrExpiresAt: number) => {
-    if (!logBanner) return;
+    if (!logBanner || !mobileQrOutput) return;
     const payload = encodePairingQrPayload({
       host,
       port: portToUse,
@@ -521,7 +525,7 @@ export function startServer(
     activePort = actualPort;
     resolveReady(actualPort);
 
-    if (mobilePairing) {
+    if (mobilePairing && autoStartMobilePairing) {
       const pairingCode = mobilePairing.startPairing();
       printPairingQr(
         "codex-blocker.local",
@@ -552,9 +556,11 @@ export function startServer(
     if (!logBanner) return;
 
     const displayHost = bindHost === "0.0.0.0" ? "localhost" : bindHost;
-    const mobileLine = mobileEnabled
-      ? `│   Mobile:    enabled (${mobileServiceName})  │`
-      : "│   Mobile:    disabled                     │";
+    const mobileLine = !mobileEnabled
+      ? "│   Mobile:    disabled                     │"
+      : mobileQrOutput
+        ? `│   Mobile:    enabled (${mobileServiceName})  │`
+        : "│   Mobile:    extension-only              │";
 
     console.log(`
 ┌─────────────────────────────────────┐

@@ -111,7 +111,7 @@ npx codex-blocker --version
 
 SECURITY NOTE: IF YOU ENABLE MOBILE ACCESS, RUN `npx codex-blocker mobile:remove` WHEN YOU ARE DONE TO REMOVE FIREWALL/PORTPROXY EXPOSURE.
 `mobile:fix` opens Private-profile firewall by default; Public-profile access requires `--allow-public`.
-`--extension-only` keeps the server local-first (`127.0.0.1` by default), disables mDNS publishing, and skips startup doctor/fix.
+`--extension-only` keeps the server local-first (`127.0.0.1` by default), disables mDNS + terminal QR output (code output remains), and skips startup doctor/fix.
 Pairing tokens are session-scoped: restarting the server invalidates old tokens and requires fresh pairing.
 Mobile app cold starts and full browser restarts also require re-pairing.
 
