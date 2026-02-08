@@ -1,5 +1,6 @@
 import type {
   MobileDiscoveryResponse,
+  MobilePairConfirmRequest,
   MobilePairConfirmResponse,
   MobilePairStartResponse,
   ServerMessage,
@@ -67,15 +68,35 @@ export async function startPairing(host: string, port = DEFAULT_PORT): Promise<M
   return (await response.json()) as MobilePairStartResponse;
 }
 
-export async function confirmPairing(
+export async function confirmPairingCode(
   host: string,
   code: string,
   port = DEFAULT_PORT
 ): Promise<MobilePairConfirmResponse> {
+  const body: MobilePairConfirmRequest = { code };
   const response = await fetch(buildHttpUrl(host, port, "/mobile/pair/confirm"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ code }),
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok) {
+    throw new Error("Unable to confirm mobile pairing.");
+  }
+
+  return (await response.json()) as MobilePairConfirmResponse;
+}
+
+export async function confirmPairingQr(
+  host: string,
+  qrNonce: string,
+  port = DEFAULT_PORT
+): Promise<MobilePairConfirmResponse> {
+  const body: MobilePairConfirmRequest = { qrNonce };
+  const response = await fetch(buildHttpUrl(host, port, "/mobile/pair/confirm"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {

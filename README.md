@@ -67,7 +67,7 @@ pnpm --filter @codex-blocker/mobile dev
 ```
 
 Then open Expo Go on iPhone and connect to the project.
-When pairing is required, enter the 6-digit code shown in the server terminal.
+When pairing is required, scan the QR shown in the server terminal from the mobile app.
 
 ## Server CLI
 
@@ -126,7 +126,8 @@ Mobile app cold starts and full browser restarts also require re-pairing.
 - **Works offline** — Blocks everything when server isn't running (safety default)
 - **Mobile LAN mode** — Optional pairing/discovery endpoints for iPhone app connections
 - **Expo iOS app (TypeScript)** — Realtime status, notifications toggle, and mobile blocking-mode controls
-- **Restart-scoped pairing** — Extension + mobile both require a fresh 6-digit code after server restart
+- **Restart-scoped pairing** — Extension + mobile both require fresh pairing after server restart
+- **Mobile QR pairing** — Mobile app pairs by scanning short-lived terminal QR codes (with in-app refresh on expiry)
 - **Extension session auth** — Token stored in browser session storage only (full browser restart requires re-pair)
 - **Pinned mobile server identity** — App trusts first seen server instance and requires re-pair on identity changes
 

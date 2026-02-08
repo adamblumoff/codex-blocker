@@ -4,7 +4,7 @@ import { discoverServer } from "../lib/discovery";
 import {
   fetchDiscovery,
   buildWsProtocols,
-  confirmPairing,
+  confirmPairingQr,
   fetchStatus,
   parseStateMessage,
   startPairing,
@@ -12,9 +12,11 @@ import {
 } from "../lib/server";
 import { clearConnection, loadConnection, saveConnection } from "../lib/storage";
 import { shouldTrustDiscoveredInstance } from "../lib/trust";
+import { parsePairingQrPayload } from "../lib/pairing-qr";
 
 const RECONNECT_BASE_DELAY_MS = 1_000;
 const RECONNECT_MAX_DELAY_MS = 20_000;
+const QR_EXPIRED_NOTICE = "QR expired. Tap Refresh QR to generate a new one.";
 
 const EMPTY_STATUS: CodexStatus = {
   blocked: true,
@@ -30,6 +32,8 @@ type HookState = {
   error: string | null;
   lastUpdatedAt: number | null;
   pairingExpiresAt: number | null;
+  qrExpiresAt: number | null;
+  pairingNotice: string | null;
 };
 
 type WebSocketHandle = {
@@ -119,14 +123,18 @@ function connectRealtimeSocket(
 }
 
 export function useCodexConnection() {
-  const [{ phase, status, host, error, lastUpdatedAt, pairingExpiresAt }, setState] =
-    useState<HookState>({
+  const [
+    { phase, status, host, error, lastUpdatedAt, pairingExpiresAt, qrExpiresAt, pairingNotice },
+    setState,
+  ] = useState<HookState>({
     phase: "booting",
     status: EMPTY_STATUS,
     host: null,
     error: null,
     lastUpdatedAt: null,
     pairingExpiresAt: null,
+    qrExpiresAt: null,
+    pairingNotice: null,
   });
   const socketRef = useRef<WebSocketHandle | null>(null);
   const sessionTokenRef = useRef<string | null>(null);
@@ -134,8 +142,17 @@ export function useCodexConnection() {
     host: string;
     port: number;
     expiresAt: number;
+    qrExpiresAt: number;
     instanceId: string;
   } | null>(null);
+  const qrExpiryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearQrExpiryTimer = useCallback(() => {
+    if (qrExpiryTimerRef.current) {
+      clearTimeout(qrExpiryTimerRef.current);
+      qrExpiryTimerRef.current = null;
+    }
+  }, []);
 
   const closeSocket = useCallback(() => {
     socketRef.current?.close();
@@ -161,6 +178,7 @@ export function useCodexConnection() {
         phase: "pairing",
         host: formatHostLabel(hostToPair, portToPair),
         error: errorMessage,
+        pairingNotice: null,
       }));
 
       const pairing = await startPairing(hostToPair, portToPair);
@@ -168,6 +186,7 @@ export function useCodexConnection() {
         host: hostToPair,
         port: portToPair,
         expiresAt: pairing.expiresAt,
+        qrExpiresAt: pairing.qrExpiresAt,
         instanceId,
       };
       setState((current) => ({
@@ -176,6 +195,8 @@ export function useCodexConnection() {
         host: formatHostLabel(hostToPair, portToPair),
         error: errorMessage,
         pairingExpiresAt: pairing.expiresAt,
+        qrExpiresAt: pairing.qrExpiresAt,
+        pairingNotice: null,
       }));
     },
     []
@@ -191,8 +212,10 @@ export function useCodexConnection() {
       setState((current) => ({
         ...current,
         phase: "discovering",
-        error: "Connection expired. Re-pair with the latest server code.",
+        error: "Connection expired. Re-pair by scanning the latest terminal QR.",
         pairingExpiresAt: null,
+        qrExpiresAt: null,
+        pairingNotice: null,
       }));
 
       const discovered =
@@ -206,6 +229,8 @@ export function useCodexConnection() {
           phase: "error",
           error: "Could not rediscover codex-blocker on this Wi-Fi network.",
           pairingExpiresAt: null,
+          qrExpiresAt: null,
+          pairingNotice: null,
         }));
         return;
       }
@@ -214,7 +239,7 @@ export function useCodexConnection() {
         discovered.host,
         discovered.port,
         discovered.info.instanceId,
-        "Server session reset. Enter the new 6-digit code from your terminal."
+        "Server session reset. Scan the new terminal QR to trust this server."
       );
     },
     [beginPairing, closeSocket]
@@ -228,6 +253,8 @@ export function useCodexConnection() {
         host: formatHostLabel(nextHost, nextPort),
         error: null,
         pairingExpiresAt: null,
+        qrExpiresAt: null,
+        pairingNotice: null,
       }));
 
       const initialStatus = await fetchStatus(nextHost, token, nextPort);
@@ -243,9 +270,12 @@ export function useCodexConnection() {
         error: null,
         lastUpdatedAt: Date.now(),
         pairingExpiresAt: null,
+        qrExpiresAt: null,
+        pairingNotice: null,
       }));
       pairingRef.current = null;
       sessionTokenRef.current = token;
+      clearQrExpiryTimer();
 
       closeSocket();
       socketRef.current = connectRealtimeSocket(
@@ -284,12 +314,13 @@ export function useCodexConnection() {
 
       return true;
     },
-    [closeSocket, pairAfterAuthFailure, setConnecting]
+    [clearQrExpiryTimer, closeSocket, pairAfterAuthFailure, setConnecting]
   );
 
   const bootstrap = useCallback(async () => {
     closeSocket();
     pairingRef.current = null;
+    clearQrExpiryTimer();
 
     try {
       const saved = await loadConnection();
@@ -298,6 +329,8 @@ export function useCodexConnection() {
         phase: "discovering",
         error: null,
         pairingExpiresAt: null,
+        qrExpiresAt: null,
+        pairingNotice: null,
       }));
 
       let discovered = saved.host
@@ -312,6 +345,8 @@ export function useCodexConnection() {
           phase: "error",
           error: "Could not discover codex-blocker on this Wi-Fi network.",
           pairingExpiresAt: null,
+          qrExpiresAt: null,
+          pairingNotice: null,
         }));
         return;
       }
@@ -327,7 +362,7 @@ export function useCodexConnection() {
           discovered.host,
           discovered.port,
           discovered.info.instanceId,
-          "Detected a different Codex Blocker server identity. Re-enter pairing code to trust this server."
+          "Detected a different Codex Blocker server identity. Scan its terminal QR to trust it."
         );
         return;
       }
@@ -365,31 +400,105 @@ export function useCodexConnection() {
         phase: "error",
         error: message,
         pairingExpiresAt: null,
+        qrExpiresAt: null,
+        pairingNotice: null,
       }));
     }
-  }, [beginPairing, closeSocket, connectWithToken]);
+  }, [beginPairing, clearQrExpiryTimer, closeSocket, connectWithToken]);
 
-  const submitPairingCode = useCallback(
-    async (rawCode: string): Promise<boolean> => {
+  const refreshPairing = useCallback(async (): Promise<boolean> => {
+    const pending = pairingRef.current;
+    if (!pending) {
+      setState((current) => ({
+        ...current,
+        phase: "error",
+        error: "No active pairing request. Retry connection first.",
+        pairingNotice: null,
+      }));
+      return false;
+    }
+
+    try {
+      const refreshed = await startPairing(pending.host, pending.port);
+      pairingRef.current = {
+        ...pending,
+        expiresAt: refreshed.expiresAt,
+        qrExpiresAt: refreshed.qrExpiresAt,
+      };
+      setState((current) => ({
+        ...current,
+        phase: "pairing",
+        host: formatHostLabel(pending.host, pending.port),
+        error: null,
+        pairingExpiresAt: refreshed.expiresAt,
+        qrExpiresAt: refreshed.qrExpiresAt,
+        pairingNotice: "QR refreshed. Scan the latest code shown in your terminal.",
+      }));
+      return true;
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "Failed to refresh pairing QR.";
+      setState((current) => ({
+        ...current,
+        phase: "pairing",
+        host: formatHostLabel(pending.host, pending.port),
+        error: message,
+        pairingExpiresAt: pending.expiresAt,
+        qrExpiresAt: pending.qrExpiresAt,
+      }));
+      return false;
+    }
+  }, []);
+
+  const submitPairingQrPayload = useCallback(
+    async (rawPayload: string): Promise<boolean> => {
       const pending = pairingRef.current;
-      const code = rawCode.trim();
-
       if (!pending) {
         setState((current) => ({
           ...current,
           phase: "error",
           error: "No active pairing request. Retry connection first.",
+          pairingNotice: null,
         }));
         return false;
       }
 
-      if (!/^\d{6}$/.test(code)) {
+      const parsed = parsePairingQrPayload(rawPayload);
+      if (!parsed.ok) {
         setState((current) => ({
           ...current,
           phase: "pairing",
           host: formatHostLabel(pending.host, pending.port),
-          error: "Enter the 6-digit code shown in the server terminal.",
+          error: parsed.error,
           pairingExpiresAt: pending.expiresAt,
+          qrExpiresAt: pending.qrExpiresAt,
+        }));
+        return false;
+      }
+
+      const payload = parsed.payload;
+      if (payload.expiresAt <= Date.now()) {
+        setState((current) => ({
+          ...current,
+          phase: "pairing",
+          host: formatHostLabel(pending.host, pending.port),
+          error: null,
+          pairingExpiresAt: pending.expiresAt,
+          qrExpiresAt: payload.expiresAt,
+          pairingNotice: QR_EXPIRED_NOTICE,
+        }));
+        return false;
+      }
+
+      if (payload.instanceId !== pending.instanceId) {
+        setState((current) => ({
+          ...current,
+          phase: "pairing",
+          host: formatHostLabel(pending.host, pending.port),
+          error:
+            "That QR belongs to a different Codex Blocker server instance. Refresh and scan the current server QR.",
+          pairingExpiresAt: pending.expiresAt,
+          qrExpiresAt: pending.qrExpiresAt,
+          pairingNotice: null,
         }));
         return false;
       }
@@ -399,10 +508,15 @@ export function useCodexConnection() {
         phase: "connecting",
         host: formatHostLabel(pending.host, pending.port),
         error: null,
+        pairingNotice: null,
       }));
 
       try {
-        const confirmed = await confirmPairing(pending.host, code, pending.port);
+        const confirmed = await confirmPairingQr(
+          pending.host,
+          payload.qrNonce,
+          pending.port
+        );
         await saveConnection(pending.host, pending.instanceId, pending.port);
         const connected = await connectWithToken(
           pending.host,
@@ -415,16 +529,18 @@ export function useCodexConnection() {
         return true;
       } catch (cause) {
         const message =
-          cause instanceof Error ? cause.message : "Failed to confirm pairing code.";
+          cause instanceof Error ? cause.message : "Failed to confirm pairing QR.";
         setState((current) => ({
           ...current,
           phase: "pairing",
           host: formatHostLabel(pending.host, pending.port),
           error:
             message === "Unable to confirm mobile pairing."
-              ? "Invalid or expired code. Start pairing again in the server terminal."
+              ? "Invalid or expired QR. Refresh and scan the latest terminal QR."
               : message,
           pairingExpiresAt: pending.expiresAt,
+          qrExpiresAt: pending.qrExpiresAt,
+          pairingNotice: null,
         }));
         return false;
       }
@@ -433,9 +549,41 @@ export function useCodexConnection() {
   );
 
   useEffect(() => {
+    clearQrExpiryTimer();
+    if (phase !== "pairing" || !qrExpiresAt) {
+      return;
+    }
+    const remaining = qrExpiresAt - Date.now();
+    if (remaining <= 0) {
+      setState((current) =>
+        current.phase === "pairing"
+          ? {
+              ...current,
+              pairingNotice: QR_EXPIRED_NOTICE,
+            }
+          : current
+      );
+      return;
+    }
+    qrExpiryTimerRef.current = setTimeout(() => {
+      setState((current) =>
+        current.phase === "pairing"
+          ? {
+              ...current,
+              pairingNotice: QR_EXPIRED_NOTICE,
+            }
+          : current
+      );
+    }, remaining + 25);
+  }, [clearQrExpiryTimer, phase, qrExpiresAt]);
+
+  useEffect(() => {
     void bootstrap();
-    return () => closeSocket();
-  }, [bootstrap, closeSocket]);
+    return () => {
+      closeSocket();
+      clearQrExpiryTimer();
+    };
+  }, [bootstrap, clearQrExpiryTimer, closeSocket]);
 
   return {
     phase,
@@ -444,7 +592,11 @@ export function useCodexConnection() {
     error,
     lastUpdatedAt,
     pairingExpiresAt,
+    qrExpiresAt,
+    pairingNotice,
+    qrExpired: phase === "pairing" && qrExpiresAt !== null && qrExpiresAt <= Date.now(),
     reconnect: bootstrap,
-    submitPairingCode,
+    refreshPairing,
+    submitPairingQrPayload,
   };
 }

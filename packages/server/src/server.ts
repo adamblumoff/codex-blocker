@@ -18,6 +18,11 @@ import { publishMobileService, type MdnsServiceHandle } from "./mdns.js";
 import {
   createAuthToken,
 } from "./auth-token.js";
+import {
+  PAIRING_QR_FORMAT,
+  encodePairingQrPayload,
+  renderPairingQr,
+} from "./pairing-qr.js";
 const RATE_WINDOW_MS = 60_000;
 const RATE_LIMIT = 60;
 const MAX_WS_CONNECTIONS_PER_IP = 3;
@@ -208,6 +213,25 @@ function getResponseHost(req: IncomingMessage, bindHost: string, port: number): 
   return `${normalizeListenHost(bindHost)}:${port}`;
 }
 
+function splitHostAndPort(
+  rawHost: string,
+  fallbackPort: number
+): { host: string; port: number } {
+  try {
+    const parsed = new URL(`http://${rawHost}`);
+    const parsedPort = parsed.port ? Number.parseInt(parsed.port, 10) : fallbackPort;
+    return {
+      host: parsed.hostname,
+      port:
+        Number.isInteger(parsedPort) && parsedPort > 0 && parsedPort < 65_536
+          ? parsedPort
+          : fallbackPort,
+    };
+  } catch {
+    return { host: rawHost, port: fallbackPort };
+  }
+}
+
 export type ServerOptions = {
   sessionsDir?: string;
   startWatcher?: boolean;
@@ -252,6 +276,30 @@ export function startServer(
       })
     : null;
 
+  const printPairingQr = (host: string, portToUse: number, qrNonce: string, qrExpiresAt: number) => {
+    if (!logBanner) return;
+    const payload = encodePairingQrPayload({
+      host,
+      port: portToUse,
+      instanceId: mobileInstanceId,
+      qrNonce,
+      expiresAt: qrExpiresAt,
+    });
+    void renderPairingQr(payload)
+      .then((terminalQr) => {
+        console.log(
+          `[Codex Blocker] Scan this QR in the mobile app (expires in 60 seconds):\n${terminalQr}\n`
+        );
+      })
+      .catch((error) => {
+        console.warn(
+          `[Codex Blocker] Failed to render pairing QR: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+      });
+  };
+
   const server = createServer(async (req, res) => {
     const clientIp = getClientIp(req);
     if (!checkRateLimit(clientIp)) {
@@ -295,8 +343,18 @@ export function startServer(
 
       if (req.method === "POST" && url.pathname === "/mobile/pair/start") {
         const pairingCode = mobilePairing.startPairing();
+        const rawHost = getResponseHost(req, bindHost, activePort);
+        const hostInfo = splitHostAndPort(rawHost, activePort);
+        printPairingQr(
+          hostInfo.host,
+          hostInfo.port,
+          pairingCode.qrNonce,
+          pairingCode.qrExpiresAt
+        );
         const payload: MobilePairStartResponse = {
           expiresAt: pairingCode.expiresAt,
+          qrExpiresAt: pairingCode.qrExpiresAt,
+          qrFormat: PAIRING_QR_FORMAT,
         };
         sendJson(res, payload);
         return;
@@ -314,16 +372,28 @@ export function startServer(
           return;
         }
 
-        const code = (body as Partial<MobilePairConfirmRequest>).code;
-        if (typeof code !== "string" || code.trim().length === 0) {
-          sendJson(res, { error: "Missing pairing code" }, 400);
+        const confirmBody = body as Partial<MobilePairConfirmRequest>;
+        const code = typeof confirmBody.code === "string" ? confirmBody.code.trim() : "";
+        const qrNonce =
+          typeof confirmBody.qrNonce === "string" ? confirmBody.qrNonce.trim() : "";
+
+        const hasCode = code.length > 0;
+        const hasQrNonce = qrNonce.length > 0;
+        if (hasCode === hasQrNonce) {
+          sendJson(res, { error: "Provide exactly one pairing credential" }, 400);
           return;
         }
 
-        const confirmed = mobilePairing.confirmPairing(code);
+        const confirmed = hasCode
+          ? mobilePairing.confirmPairingCode(code)
+          : mobilePairing.confirmPairingQrNonce(qrNonce);
         if (!confirmed) {
           recordPairConfirmFailure(clientIp);
-          sendJson(res, { error: "Invalid or expired pairing code" }, 401);
+          sendJson(
+            res,
+            { error: hasCode ? "Invalid or expired pairing code" : "Invalid or expired QR nonce" },
+            401
+          );
           return;
         }
 
@@ -452,7 +522,13 @@ export function startServer(
     resolveReady(actualPort);
 
     if (mobilePairing) {
-      mobilePairing.startPairing();
+      const pairingCode = mobilePairing.startPairing();
+      printPairingQr(
+        "codex-blocker.local",
+        actualPort,
+        pairingCode.qrNonce,
+        pairingCode.qrExpiresAt
+      );
       if (publishMdns) {
         try {
           mdnsService = publishMobileService({

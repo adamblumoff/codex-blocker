@@ -6,11 +6,11 @@ import {
   StyleSheet,
   Switch,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from "react-native";
 import * as Notifications from "expo-notifications";
+import { CameraView, useCameraPermissions } from "expo-camera";
 import { useCodexConnection } from "./src/hooks/useCodexConnection";
 import { computeShouldBlock } from "./src/lib/blocking";
 import {
@@ -43,7 +43,7 @@ function formatPairingExpiry(value: number | null): string {
 function getConnectionMessage(phase: string, error: string | null): string {
   if (error) return error;
   if (phase === "connected") return "Connected to codex-blocker server.";
-  if (phase === "pairing") return "Not connected. Enter the terminal pairing code.";
+  if (phase === "pairing") return "Not connected. Scan the terminal QR code to pair.";
   if (phase === "connecting" || phase === "discovering" || phase === "booting") {
     return "Connecting to codex-blocker server...";
   }
@@ -58,11 +58,16 @@ export default function App() {
     error,
     lastUpdatedAt,
     pairingExpiresAt,
+    qrExpiresAt,
+    pairingNotice,
     reconnect,
-    submitPairingCode,
+    refreshPairing,
+    submitPairingQrPayload,
   } = useCodexConnection();
   const [preferences, setPreferences] = useState<MobilePreferences>(DEFAULT_PREFERENCES);
-  const [pairingCode, setPairingCode] = useState("");
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scannerBusy, setScannerBusy] = useState(false);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const previousBlockedRef = useRef<boolean | null>(null);
 
   useEffect(() => {
@@ -71,9 +76,38 @@ export default function App() {
 
   useEffect(() => {
     if (phase !== "pairing") {
-      setPairingCode("");
+      setScannerOpen(false);
+      setScannerBusy(false);
     }
   }, [phase]);
+
+  const openScanner = useCallback(async () => {
+    if (cameraPermission?.granted) {
+      setScannerOpen(true);
+      return;
+    }
+    const requested = await requestCameraPermission();
+    if (requested.granted) {
+      setScannerOpen(true);
+    }
+  }, [cameraPermission?.granted, requestCameraPermission]);
+
+  const onBarcodeScanned = useCallback(
+    (event: { data: string }) => {
+      if (!scannerOpen || scannerBusy) return;
+      setScannerBusy(true);
+      void submitPairingQrPayload(event.data)
+        .then((success) => {
+          if (success) {
+            setScannerOpen(false);
+          }
+        })
+        .finally(() => {
+          setTimeout(() => setScannerBusy(false), 650);
+        });
+    },
+    [scannerBusy, scannerOpen, submitPairingQrPayload]
+  );
 
   const updatePreferences = useCallback(async (next: MobilePreferences) => {
     setPreferences(next);
@@ -186,7 +220,7 @@ export default function App() {
           {phase === "pairing" ? (
             <View style={styles.discoveryRow}>
               <Text style={styles.discoveryText}>
-                Enter the 6-digit pairing code from your Codex Blocker terminal.
+                Scan the latest QR code shown in your Codex Blocker terminal.
               </Text>
             </View>
           ) : null}
@@ -200,24 +234,61 @@ export default function App() {
           <View style={styles.pairingCard}>
             <Text style={styles.sectionTitle}>Pair This Phone</Text>
             <Text style={styles.pairingSubtitle}>
-              Code expires at {formatPairingExpiry(pairingExpiresAt)}. Start pairing again in your
-              terminal if this code times out.
+              QR expires at {formatPairingExpiry(qrExpiresAt)}. If it times out, tap Refresh QR to
+              print a new one in your terminal.
             </Text>
-            <TextInput
-              style={styles.pairingInput}
-              value={pairingCode}
-              onChangeText={setPairingCode}
-              keyboardType="number-pad"
-              maxLength={6}
-              placeholder="123456"
-              placeholderTextColor="#8a8090"
-            />
-            <TouchableOpacity
-              style={styles.pairButton}
-              onPress={() => void submitPairingCode(pairingCode)}
-            >
-              <Text style={styles.retryLabel}>Confirm Pairing Code</Text>
-            </TouchableOpacity>
+            {pairingNotice ? (
+              <View style={styles.pairingNotice}>
+                <Text style={styles.pairingNoticeText}>{pairingNotice}</Text>
+              </View>
+            ) : null}
+            {!cameraPermission?.granted ? (
+              <Text style={styles.pairingSubtitle}>
+                Camera permission is required to scan QR pairing codes.
+              </Text>
+            ) : null}
+            {scannerOpen ? (
+              <View style={styles.scannerWrap}>
+                <CameraView
+                  style={styles.scannerCamera}
+                  onBarcodeScanned={onBarcodeScanned}
+                  barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+                />
+                <View style={styles.scannerControls}>
+                  <TouchableOpacity
+                    style={styles.secondaryPairButton}
+                    onPress={() => setScannerOpen(false)}
+                  >
+                    <Text style={styles.secondaryPairButtonText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.secondaryPairButton}
+                    onPress={() => void refreshPairing()}
+                  >
+                    <Text style={styles.secondaryPairButtonText}>Refresh QR</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.scannerControls}>
+                <TouchableOpacity
+                  style={styles.pairButton}
+                  onPress={() => void openScanner()}
+                  disabled={scannerBusy}
+                >
+                  <Text style={styles.retryLabel}>Scan QR</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.secondaryPairButton}
+                  onPress={() => void refreshPairing()}
+                >
+                  <Text style={styles.secondaryPairButtonText}>Refresh QR</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            <Text style={styles.pairingMeta}>
+              Pairing session expires at {formatPairingExpiry(pairingExpiresAt)}.
+            </Text>
           </View>
         ) : null}
 
@@ -379,25 +450,57 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: "#546075",
   },
-  pairingInput: {
+  pairingNotice: {
+    backgroundColor: "#fff5d8",
+    borderColor: "#e9cf86",
     borderWidth: 1,
-    borderColor: "#d8cdb9",
-    backgroundColor: "#fffaf2",
     borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    fontSize: 24,
-    letterSpacing: 4,
-    color: "#1d2433",
-    fontWeight: "700",
-    textAlign: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  pairingNoticeText: {
+    fontSize: 12,
+    color: "#6d5618",
+    fontWeight: "600",
   },
   pairButton: {
-    marginTop: 2,
     backgroundColor: "#1f7a4d",
     borderRadius: 10,
     paddingVertical: 10,
+    paddingHorizontal: 12,
     alignItems: "center",
+    minWidth: 120,
+  },
+  secondaryPairButton: {
+    borderWidth: 1,
+    borderColor: "#b7a688",
+    backgroundColor: "#fffaf2",
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    minWidth: 120,
+  },
+  secondaryPairButtonText: {
+    color: "#3b3f49",
+    fontWeight: "600",
+  },
+  scannerWrap: {
+    gap: 10,
+  },
+  scannerCamera: {
+    height: 260,
+    borderRadius: 12,
+    overflow: "hidden",
+  },
+  scannerControls: {
+    flexDirection: "row",
+    gap: 10,
+    flexWrap: "wrap",
+  },
+  pairingMeta: {
+    fontSize: 11,
+    color: "#6b7384",
   },
   sectionTitle: {
     fontSize: 18,

@@ -79,23 +79,41 @@ describe("mobile integration", () => {
     const startPayload = (await startRes.json()) as Record<string, unknown>;
     expect(startPayload.code).toBeUndefined();
     expect(typeof startPayload.expiresAt).toBe("number");
+    expect(typeof startPayload.qrExpiresAt).toBe("number");
+    expect(startPayload.qrFormat).toBe("cbm-v1");
 
     const badConfirmRes = await fetch(`http://127.0.0.1:${ctx.port}/mobile/pair/confirm`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code: "999999" }),
+      body: JSON.stringify({ qrNonce: "not-a-real-nonce" }),
     });
     expect(badConfirmRes.status).toBe(401);
 
     const confirmRes = await fetch(`http://127.0.0.1:${ctx.port}/mobile/pair/confirm`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code: ctx.pairing?.startPairing().code }),
+      body: JSON.stringify({ qrNonce: ctx.pairing?.startPairing().qrNonce }),
     });
     expect(confirmRes.status).toBe(200);
     const confirmPayload = (await confirmRes.json()) as Record<string, unknown>;
     expect(typeof confirmPayload.token).toBe("string");
     ctx.token = confirmPayload.token as string;
+  });
+
+  it("rejects invalid confirm payload shape", async () => {
+    const missing = await fetch(`http://127.0.0.1:${ctx.port}/mobile/pair/confirm`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(missing.status).toBe(400);
+
+    const both = await fetch(`http://127.0.0.1:${ctx.port}/mobile/pair/confirm`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: "123456", qrNonce: "abc" }),
+    });
+    expect(both.status).toBe(400);
   });
 
   it("locks out repeated invalid pairing attempts", async () => {
@@ -109,7 +127,7 @@ describe("mobile integration", () => {
       const res = await fetch(`http://127.0.0.1:${ctx.port}/mobile/pair/confirm`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code: "111111" }),
+        body: JSON.stringify({ qrNonce: "bad-nonce" }),
       });
       expect(res.status).toBe(401);
     }
@@ -117,7 +135,7 @@ describe("mobile integration", () => {
     const lockedOut = await fetch(`http://127.0.0.1:${ctx.port}/mobile/pair/confirm`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code: "222222" }),
+      body: JSON.stringify({ qrNonce: "bad-nonce-two" }),
     });
     expect(lockedOut.status).toBe(429);
   });

@@ -39,10 +39,13 @@ export interface MobileDiscoveryResponse {
 
 export interface MobilePairStartResponse {
   expiresAt: number;
+  qrExpiresAt: number;
+  qrFormat: "cbm-v1";
 }
 
 export interface MobilePairConfirmRequest {
-  code: string;
+  code?: string;
+  qrNonce?: string;
 }
 
 export interface MobilePairConfirmResponse {

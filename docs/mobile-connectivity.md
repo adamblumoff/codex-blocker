@@ -31,12 +31,23 @@ SECURITY NOTE: RUN `npx codex-blocker mobile:remove` WHEN YOU ARE DONE USING MOB
 
 ## End-to-End Pairing Flow
 
-1. Server starts and prints a 6-digit pairing code in terminal.
+1. Server starts and prints a mobile pairing QR in terminal (short-lived, one-time nonce).
 2. Client discovers server (`/mobile/discovery`).
 3. Client ensures pairing window (`/mobile/pair/start`).
-4. User enters terminal code into app/extension.
-5. Client confirms code (`/mobile/pair/confirm`) and receives session token.
+4. Mobile app scans terminal QR and posts nonce to `/mobile/pair/confirm`.
+5. Extension can still pair by entering code into `/mobile/pair/confirm`.
 6. Client connects to `/status` + `/ws` with that token.
+
+Mobile app pairing UX:
+
+- Pairing screen includes `Scan QR` and `Refresh QR`.
+- When `qrExpiresAt` is reached, app shows an in-app expiry banner and requires refresh.
+
+`/mobile/pair/start` response now includes:
+
+- `expiresAt` (overall pairing window)
+- `qrExpiresAt` (current QR nonce expiry)
+- `qrFormat` (`cbm-v1`)
 
 Pairing brute-force guard:
 
@@ -46,7 +57,7 @@ Pairing brute-force guard:
 
 - Server token is in-memory only (not persisted to disk).
 - Restarting server invalidates all prior client tokens.
-- Mobile app cold start always requires pairing code.
+- Mobile app cold start always requires scanning a fresh terminal QR.
   - Mobile persists only host + `instanceId`.
   - Mobile does **not** persist auth token.
 - Extension stores token in `chrome.storage.session`.

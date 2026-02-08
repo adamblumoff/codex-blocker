@@ -10,7 +10,8 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.codexblocker.mobile",
       "infoPlist": {
-        "NSLocalNetworkUsageDescription": "Codex Blocker discovers your local Codex Blocker server over Wi-Fi."
+        "NSLocalNetworkUsageDescription": "Codex Blocker discovers your local Codex Blocker server over Wi-Fi.",
+        "NSCameraUsageDescription": "Codex Blocker uses your camera to scan pairing QR codes from your terminal."
       }
     }
   }
