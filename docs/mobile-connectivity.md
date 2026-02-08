@@ -66,6 +66,12 @@ Mobile app pairing UX:
 - `qrExpiresAt` (current QR nonce expiry)
 - `qrFormat` (`cbm-v1`)
 
+`/mobile/pair/start` request supports:
+
+- `regenerateCode` (optional, default `false`) — force a new 6-digit code + fresh QR nonce.
+- `refreshQr` (optional, default `true`) — refresh and print a new terminal QR for the current code.
+  - Use `refreshQr: false` for extension bootstrap flows that only need pairing-window metadata and should not reprint QR on startup.
+
 Pairing brute-force guard:
 
 - 6 failed confirms per minute lock pairing confirms for that client for 2 minutes.

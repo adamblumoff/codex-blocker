@@ -45,6 +45,7 @@ export interface MobilePairStartResponse {
 
 export interface MobilePairStartRequest {
   regenerateCode?: boolean;
+  refreshQr?: boolean;
 }
 
 export interface MobilePairConfirmRequest {

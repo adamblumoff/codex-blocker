@@ -25,6 +25,11 @@ export type PairingCode = {
   qrExpiresAt: number;
 };
 
+export type StartPairingOptions = {
+  regenerateCode?: boolean;
+  refreshQr?: boolean;
+};
+
 export class MobilePairingManager {
   private pairing: PairingRecord | null = null;
 
@@ -33,9 +38,14 @@ export class MobilePairingManager {
     private readonly now: () => number = () => Date.now()
   ) {}
 
-  startPairing(regenerateCode = false): PairingCode {
+  startPairing(options: StartPairingOptions = {}): PairingCode {
+    const regenerateCode = options.regenerateCode === true;
+    const refreshQr = options.refreshQr !== false;
     this.expireIfNeeded();
     if (this.pairing && !regenerateCode) {
+      if (!refreshQr) {
+        return { ...this.pairing };
+      }
       const refreshed = {
         ...this.pairing,
         qrNonce: randomBytes(16).toString("hex"),

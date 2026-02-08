@@ -29,7 +29,7 @@ describe("mobile pairing manager", () => {
     expect(pairing.confirmPairingCode(created.code)).toBe(false);
   });
 
-  it("reuses the active pairing code but refreshes qr nonce", () => {
+  it("reuses the active pairing code but refreshes qr nonce by default", () => {
     let now = 1_000;
     const pairing = new MobilePairingManager(() => {}, () => now);
     const first = pairing.startPairing();
@@ -47,13 +47,26 @@ describe("mobile pairing manager", () => {
     expect(third.expiresAt).toBeGreaterThan(first.expiresAt);
   });
 
+  it("reuses the active pairing code and qr nonce when refreshQr is false", () => {
+    let now = 1_000;
+    const pairing = new MobilePairingManager(() => {}, () => now);
+    const first = pairing.startPairing();
+    now = 1_001;
+    const second = pairing.startPairing({ refreshQr: false });
+
+    expect(second.code).toBe(first.code);
+    expect(second.expiresAt).toBe(first.expiresAt);
+    expect(second.qrNonce).toBe(first.qrNonce);
+    expect(second.qrExpiresAt).toBe(first.qrExpiresAt);
+  });
+
   it("rotates pairing code when regeneration is requested", () => {
     let now = 1_000;
     const pairing = new MobilePairingManager(() => {}, () => now);
     const first = pairing.startPairing();
 
     now = 1_050;
-    const second = pairing.startPairing(true);
+    const second = pairing.startPairing({ regenerateCode: true });
     expect(second.code).not.toBe(first.code);
     expect(second.expiresAt).toBeGreaterThan(first.expiresAt);
   });

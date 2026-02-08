@@ -259,12 +259,17 @@ function teardownSocket() {
   websocket = null;
 }
 
-async function requestPairingWindow(regenerateCode = false): Promise<number | null> {
+type PairStartRequest = {
+  regenerateCode?: boolean;
+  refreshQr?: boolean;
+};
+
+async function requestPairingWindow(request: PairStartRequest = {}): Promise<number | null> {
   try {
     const response = await fetch(`${SERVER_HTTP_BASE}/mobile/pair/start`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ regenerateCode }),
+      body: JSON.stringify(request),
     });
     if (!response.ok) {
       return null;
@@ -291,7 +296,7 @@ async function enterPairingMode(reason?: string): Promise<void> {
   await clearSessionToken();
 
   state.pairingRequired = true;
-  const expiresAt = await requestPairingWindow();
+  const expiresAt = await requestPairingWindow({ refreshQr: false });
   state.pairingExpiresAt = expiresAt;
   setConnectionPhase(
     "pairing",
@@ -450,7 +455,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message.type === "START_PAIRING") {
     void (async () => {
-      const expiresAt = await requestPairingWindow(true);
+      const expiresAt = await requestPairingWindow({ regenerateCode: true, refreshQr: true });
       state.pairingRequired = true;
       state.pairingExpiresAt = expiresAt;
       setConnectionPhase(

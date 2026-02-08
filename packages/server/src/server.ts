@@ -360,15 +360,19 @@ export function startServer(
         }
         const startBody = body as Partial<MobilePairStartRequest>;
         const regenerateCode = startBody.regenerateCode === true;
-        const pairingCode = mobilePairing.startPairing(regenerateCode);
-        const rawHost = getResponseHost(req, bindHost, activePort);
-        const hostInfo = splitHostAndPort(rawHost, activePort);
-        printPairingQr(
-          hostInfo.host,
-          hostInfo.port,
-          pairingCode.qrNonce,
-          pairingCode.qrExpiresAt
-        );
+        const refreshQr = startBody.refreshQr !== false;
+        const pairingWasActive = mobilePairing.getStatus().active;
+        const pairingCode = mobilePairing.startPairing({ regenerateCode, refreshQr });
+        if (!pairingWasActive || regenerateCode || refreshQr) {
+          const rawHost = getResponseHost(req, bindHost, activePort);
+          const hostInfo = splitHostAndPort(rawHost, activePort);
+          printPairingQr(
+            hostInfo.host,
+            hostInfo.port,
+            pairingCode.qrNonce,
+            pairingCode.qrExpiresAt
+          );
+        }
         const payload: MobilePairStartResponse = {
           expiresAt: pairingCode.expiresAt,
           qrExpiresAt: pairingCode.qrExpiresAt,

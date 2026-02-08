@@ -107,6 +107,10 @@ If you suspect token exposure, run `npx codex-blocker mobile:rotate-token` and r
 | `/mobile/pair/start` | POST | Activates/reuses a 6-digit pairing code in the server terminal (2 minute TTL) |
 | `/mobile/pair/confirm` | POST | Exchanges valid pairing code for auth token + endpoint URLs |
 
+`POST /mobile/pair/start` accepts:
+- `regenerateCode?: boolean` (rotate 6-digit code)
+- `refreshQr?: boolean` (default `true`; refresh terminal QR nonce/print)
+
 ### WebSocket
 
 Connect to `ws://localhost:8765/ws` to receive real-time state updates:

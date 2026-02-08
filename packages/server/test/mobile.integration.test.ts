@@ -100,6 +100,31 @@ describe("mobile integration", () => {
     ctx.token = confirmPayload.token as string;
   });
 
+  it("keeps the current qr nonce when refreshQr is disabled", async () => {
+    const existingPairing = ctx.pairing?.startPairing();
+    expect(existingPairing).toBeTruthy();
+
+    const startRes = await fetch(`http://127.0.0.1:${ctx.port}/mobile/pair/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshQr: false }),
+    });
+    expect(startRes.status).toBe(200);
+    const startPayload = (await startRes.json()) as Record<string, unknown>;
+    expect(startPayload.expiresAt).toBe(existingPairing?.expiresAt);
+    expect(startPayload.qrExpiresAt).toBe(existingPairing?.qrExpiresAt);
+
+    const confirmRes = await fetch(`http://127.0.0.1:${ctx.port}/mobile/pair/confirm`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ qrNonce: existingPairing?.qrNonce }),
+    });
+    expect(confirmRes.status).toBe(200);
+    const confirmPayload = (await confirmRes.json()) as Record<string, unknown>;
+    expect(typeof confirmPayload.token).toBe("string");
+    ctx.token = confirmPayload.token as string;
+  });
+
   it("regenerates terminal code when regenerateCode is requested", async () => {
     const first = ctx.pairing?.startPairing().code;
     expect(typeof first).toBe("string");

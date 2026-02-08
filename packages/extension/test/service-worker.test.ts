@@ -181,6 +181,13 @@ describe("service worker", () => {
     vi.runOnlyPendingTimers();
     await Promise.resolve();
 
+    const initialStartCall = fetchSpy.mock.calls.find(
+      (call) => String(call[0]).endsWith("/mobile/pair/start")
+    );
+    expect(initialStartCall).toBeDefined();
+    const initialStartInit = initialStartCall?.[1] as RequestInit;
+    expect(JSON.parse(String(initialStartInit.body))).toEqual({ refreshQr: false });
+
     const initialState = await sendRuntimeMessage({ type: "GET_STATE" });
     expect(initialState.pairingRequired).toBe(true);
     expect(initialState.connectionPhase).toBe("pairing");
@@ -245,7 +252,7 @@ describe("service worker", () => {
     );
     expect(startCall).toBeDefined();
     const init = startCall?.[1] as RequestInit;
-    expect(JSON.parse(String(init.body))).toEqual({ regenerateCode: true });
+    expect(JSON.parse(String(init.body))).toEqual({ regenerateCode: true, refreshQr: true });
   });
 
   it("returns a lockout-specific error when pairing is rate limited", async () => {
