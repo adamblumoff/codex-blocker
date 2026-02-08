@@ -40,7 +40,7 @@ npx codex-blocker --extension-only
 
 Behavior:
 
-- Default bind host changes to `127.0.0.1` (unless `--bind` is explicitly provided).
+- Default bind host changes to `127.0.0.1` on native installs and `0.0.0.0` on Windows/WSL (unless `--bind` is explicitly provided).
 - mDNS publishing is disabled.
 - Terminal QR pairing output is disabled (numeric code output remains).
 - Startup `mobile:doctor`/`mobile:fix` auto-run is disabled.
@@ -69,6 +69,8 @@ Mobile app pairing UX:
 Pairing brute-force guard:
 
 - 6 failed confirms per minute lock pairing confirms for that client for 2 minutes.
+- Extension shows a lockout-specific message when this limit is hit.
+- Extension "Refresh Terminal Code" requests a freshly regenerated 6-digit code.
 
 ## Session Security Model
 

@@ -43,6 +43,10 @@ export interface MobilePairStartResponse {
   qrFormat: "cbm-v1";
 }
 
+export interface MobilePairStartRequest {
+  regenerateCode?: boolean;
+}
+
 export interface MobilePairConfirmRequest {
   code?: string;
   qrNonce?: string;

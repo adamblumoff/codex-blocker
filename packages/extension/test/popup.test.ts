@@ -140,4 +140,18 @@ describe("popup", () => {
     settingsBtn.click();
     expect((chrome.runtime.openOptionsPage as ReturnType<typeof vi.fn>)).toHaveBeenCalled();
   });
+
+  it("refreshes terminal code and updates pairing message", async () => {
+    await import("../src/popup.js");
+
+    const refresh = document.getElementById("pairing-refresh") as HTMLButtonElement;
+    const pairingMessage = document.getElementById("pairing-message") as HTMLElement;
+    refresh.click();
+
+    vi.runOnlyPendingTimers();
+    await Promise.resolve();
+
+    expect(sentMessages.some((message) => message.type === "START_PAIRING")).toBe(true);
+    expect(pairingMessage.textContent).toContain("Requested a fresh terminal code");
+  });
 });

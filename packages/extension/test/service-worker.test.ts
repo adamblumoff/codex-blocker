@@ -229,4 +229,62 @@ describe("service worker", () => {
     expect(stateAfterReject.connectionPhase).toBe("pairing");
     expect(sessionData.sessionAuthToken).toBeUndefined();
   });
+
+  it("requests a fresh terminal code when start pairing is triggered", async () => {
+    await import("../src/service-worker.js");
+    vi.runOnlyPendingTimers();
+    await Promise.resolve();
+
+    fetchSpy.mockClear();
+
+    const response = await sendRuntimeMessage({ type: "START_PAIRING" });
+    expect(response).toEqual({ success: true, expiresAt: expect.any(Number) });
+
+    const startCall = fetchSpy.mock.calls.find(
+      (call) => String(call[0]).endsWith("/mobile/pair/start")
+    );
+    expect(startCall).toBeDefined();
+    const init = startCall?.[1] as RequestInit;
+    expect(JSON.parse(String(init.body))).toEqual({ regenerateCode: true });
+  });
+
+  it("returns a lockout-specific error when pairing is rate limited", async () => {
+    fetchSpy.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/mobile/pair/start")) {
+        return {
+          ok: true,
+          json: async () => ({ expiresAt: Date.now() + 120_000 }),
+        } as Response;
+      }
+      if (url.endsWith("/mobile/pair/confirm")) {
+        const parsed = JSON.parse((init?.body as string) ?? "{}");
+        if (parsed.code === "777777") {
+          return {
+            ok: false,
+            status: 429,
+            json: async () => ({ error: "Too Many Requests", retryAfterMs: 90_000 }),
+          } as Response;
+        }
+        return {
+          ok: false,
+          status: 401,
+          json: async () => ({ error: "Invalid code" }),
+        } as Response;
+      }
+      return {
+        ok: false,
+        status: 404,
+      } as Response;
+    });
+
+    await import("../src/service-worker.js");
+    vi.runOnlyPendingTimers();
+    await Promise.resolve();
+
+    const result = await sendRuntimeMessage({ type: "CONFIRM_PAIRING", code: "777777" });
+    expect(result.success).toBe(false);
+    expect(String(result.error)).toContain("Too many incorrect attempts");
+    expect(String(result.error)).toContain("90");
+  });
 });

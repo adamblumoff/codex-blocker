@@ -20,6 +20,12 @@ type PairConfirmResponse = {
   token: string;
 };
 
+type PairConfirmErrorResponse = {
+  error?: string;
+  code?: string;
+  retryAfterMs?: number;
+};
+
 type ConnectionPhase =
   | "pairing"
   | "connecting"
@@ -253,12 +259,12 @@ function teardownSocket() {
   websocket = null;
 }
 
-async function requestPairingWindow(): Promise<number | null> {
+async function requestPairingWindow(regenerateCode = false): Promise<number | null> {
   try {
     const response = await fetch(`${SERVER_HTTP_BASE}/mobile/pair/start`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ regenerateCode }),
     });
     if (!response.ok) {
       return null;
@@ -393,6 +399,26 @@ async function confirmPairingCode(rawCode: string): Promise<{ ok: true } | { ok:
   }
 
   if (!response.ok) {
+    if (response.status === 429) {
+      let retryAfterMs: number | null = null;
+      try {
+        const payload = (await response.json()) as PairConfirmErrorResponse;
+        retryAfterMs =
+          typeof payload.retryAfterMs === "number" && payload.retryAfterMs > 0
+            ? payload.retryAfterMs
+            : null;
+      } catch {
+        retryAfterMs = null;
+      }
+      const seconds = retryAfterMs ? Math.max(1, Math.ceil(retryAfterMs / 1_000)) : null;
+      const waitHint = seconds
+        ? `Wait about ${seconds} seconds, then try again.`
+        : "Wait 2 minutes, then try again.";
+      return {
+        ok: false,
+        error: `Too many incorrect attempts. ${waitHint}`,
+      };
+    }
     return { ok: false, error: "Invalid or expired code. Start pairing again in terminal." };
   }
 
@@ -424,7 +450,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message.type === "START_PAIRING") {
     void (async () => {
-      const expiresAt = await requestPairingWindow();
+      const expiresAt = await requestPairingWindow(true);
       state.pairingRequired = true;
       state.pairingExpiresAt = expiresAt;
       setConnectionPhase(

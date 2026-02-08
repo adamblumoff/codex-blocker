@@ -150,8 +150,8 @@ function refreshPairingCode(): void {
         const expiry = formatPairingExpiry(response.expiresAt ?? null);
         setPairingMessage(
           expiry
-            ? `Use the latest terminal code (expires ${expiry}).`
-            : "Use the latest terminal code."
+            ? `Requested a fresh terminal code (expires ${expiry}).`
+            : "Requested a fresh terminal code."
         );
         refreshState();
         return;

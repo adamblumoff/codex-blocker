@@ -18,6 +18,11 @@ function canAutoConfigureHostNetworking(): boolean {
   return Boolean(process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP);
 }
 
+function isWindowsOrWslRuntime(): boolean {
+  if (process.platform === "win32") return true;
+  return Boolean(process.env.WSL_DISTRO_NAME || process.env.WSL_INTEROP);
+}
+
 function prompt(question: string): Promise<string> {
   const rl = createInterface({
     input: process.stdin,
@@ -135,7 +140,8 @@ async function main(): Promise<void> {
   const allowPublicFirewallRule = args.includes("--allow-public");
   const extensionOnly = args.includes("--extension-only");
   const explicitBindHost = getStringFlag("--bind");
-  const bindHost = explicitBindHost ?? (extensionOnly ? "127.0.0.1" : "0.0.0.0");
+  const extensionOnlyDefaultBindHost = isWindowsOrWslRuntime() ? "0.0.0.0" : "127.0.0.1";
+  const bindHost = explicitBindHost ?? (extensionOnly ? extensionOnlyDefaultBindHost : "0.0.0.0");
   const mobileServiceName = getStringFlag("--mobile-name") ?? "Codex Blocker";
 
   if (command === "mobile:doctor") {
@@ -188,7 +194,13 @@ async function main(): Promise<void> {
       "[Codex Blocker] Extension-only mode active: mobile LAN discovery and auto-fix are disabled."
     );
     if (!explicitBindHost) {
-      console.log("[Codex Blocker] Binding to localhost (127.0.0.1). Use --bind to override.\n");
+      if (bindHost === "127.0.0.1") {
+        console.log("[Codex Blocker] Binding to localhost (127.0.0.1). Use --bind to override.\n");
+      } else {
+        console.log(
+          "[Codex Blocker] Running under Windows/WSL; binding to 0.0.0.0 so browser localhost can reach the server. Use --bind to override.\n"
+        );
+      }
     }
   }
 

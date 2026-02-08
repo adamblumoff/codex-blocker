@@ -5,6 +5,7 @@ import type {
   MobileDiscoveryResponse,
   MobilePairConfirmRequest,
   MobilePairConfirmResponse,
+  MobilePairStartRequest,
   MobilePairStartResponse,
 } from "./types.js";
 import { DEFAULT_PORT } from "./types.js";
@@ -97,6 +98,12 @@ function getPairConfirmState(ip: string): PairConfirmState {
 function canAttemptPairConfirm(ip: string): boolean {
   const state = getPairConfirmState(ip);
   return state.lockoutUntil <= Date.now();
+}
+
+function getPairConfirmRetryAfterMs(ip: string): number {
+  const state = getPairConfirmState(ip);
+  const remaining = state.lockoutUntil - Date.now();
+  return remaining > 0 ? remaining : 0;
 }
 
 function recordPairConfirmFailure(ip: string): void {
@@ -346,7 +353,14 @@ export function startServer(
       }
 
       if (req.method === "POST" && url.pathname === "/mobile/pair/start") {
-        const pairingCode = mobilePairing.startPairing();
+        const body = await readJsonBody(req);
+        if (body === INVALID_JSON_SENTINEL) {
+          sendJson(res, { error: "Invalid JSON" }, 400);
+          return;
+        }
+        const startBody = body as Partial<MobilePairStartRequest>;
+        const regenerateCode = startBody.regenerateCode === true;
+        const pairingCode = mobilePairing.startPairing(regenerateCode);
         const rawHost = getResponseHost(req, bindHost, activePort);
         const hostInfo = splitHostAndPort(rawHost, activePort);
         printPairingQr(
@@ -366,7 +380,19 @@ export function startServer(
 
       if (req.method === "POST" && url.pathname === "/mobile/pair/confirm") {
         if (!canAttemptPairConfirm(clientIp)) {
-          sendJson(res, { error: "Too Many Requests" }, 429);
+          const retryAfterMs = getPairConfirmRetryAfterMs(clientIp);
+          if (retryAfterMs > 0) {
+            res.setHeader("Retry-After", String(Math.ceil(retryAfterMs / 1_000)));
+          }
+          sendJson(
+            res,
+            {
+              error: "Too Many Requests",
+              code: "pair_confirm_locked",
+              retryAfterMs,
+            },
+            429
+          );
           return;
         }
 

@@ -33,9 +33,9 @@ export class MobilePairingManager {
     private readonly now: () => number = () => Date.now()
   ) {}
 
-  startPairing(): PairingCode {
+  startPairing(regenerateCode = false): PairingCode {
     this.expireIfNeeded();
-    if (this.pairing) {
+    if (this.pairing && !regenerateCode) {
       const refreshed = {
         ...this.pairing,
         qrNonce: randomBytes(16).toString("hex"),

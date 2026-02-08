@@ -47,6 +47,17 @@ describe("mobile pairing manager", () => {
     expect(third.expiresAt).toBeGreaterThan(first.expiresAt);
   });
 
+  it("rotates pairing code when regeneration is requested", () => {
+    let now = 1_000;
+    const pairing = new MobilePairingManager(() => {}, () => now);
+    const first = pairing.startPairing();
+
+    now = 1_050;
+    const second = pairing.startPairing(true);
+    expect(second.code).not.toBe(first.code);
+    expect(second.expiresAt).toBeGreaterThan(first.expiresAt);
+  });
+
   it("rejects expired qr nonce and accepts fresh qr nonce once", () => {
     let now = 1_000;
     const pairing = new MobilePairingManager(() => {}, () => now);

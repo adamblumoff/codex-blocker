@@ -100,6 +100,25 @@ describe("mobile integration", () => {
     ctx.token = confirmPayload.token as string;
   });
 
+  it("regenerates terminal code when regenerateCode is requested", async () => {
+    const first = ctx.pairing?.startPairing().code;
+    expect(typeof first).toBe("string");
+
+    const regen = await fetch(`http://127.0.0.1:${ctx.port}/mobile/pair/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ regenerateCode: true }),
+    });
+    expect(regen.status).toBe(200);
+
+    const staleConfirm = await fetch(`http://127.0.0.1:${ctx.port}/mobile/pair/confirm`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: first }),
+    });
+    expect(staleConfirm.status).toBe(401);
+  });
+
   it("rejects invalid confirm payload shape", async () => {
     const missing = await fetch(`http://127.0.0.1:${ctx.port}/mobile/pair/confirm`, {
       method: "POST",
@@ -123,21 +142,33 @@ describe("mobile integration", () => {
       body: JSON.stringify({}),
     });
 
-    for (let index = 0; index < 6; index += 1) {
+    let sawUnauthorized = false;
+    let lockedOut: Response | null = null;
+
+    for (let index = 0; index < 8; index += 1) {
       const res = await fetch(`http://127.0.0.1:${ctx.port}/mobile/pair/confirm`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ qrNonce: "bad-nonce" }),
       });
-      expect(res.status).toBe(401);
+      if (res.status === 401) {
+        sawUnauthorized = true;
+        continue;
+      }
+      if (res.status === 429) {
+        lockedOut = res;
+        break;
+      }
+      throw new Error(`Unexpected status while probing lockout: ${res.status}`);
     }
 
-    const lockedOut = await fetch(`http://127.0.0.1:${ctx.port}/mobile/pair/confirm`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ qrNonce: "bad-nonce-two" }),
-    });
-    expect(lockedOut.status).toBe(429);
+    expect(sawUnauthorized).toBe(true);
+    expect(lockedOut?.status).toBe(429);
+    const lockedOutPayload = (await lockedOut?.json()) as Record<string, unknown>;
+    expect(lockedOutPayload.error).toBe("Too Many Requests");
+    expect(lockedOutPayload.code).toBe("pair_confirm_locked");
+    expect(typeof lockedOutPayload.retryAfterMs).toBe("number");
+    expect(Number(lockedOutPayload.retryAfterMs)).toBeGreaterThan(0);
   });
 
   it("accepts paired token for status and websocket", async () => {

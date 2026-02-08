@@ -27,11 +27,12 @@ function getStringFlag(argv: string[], flag: string): string | null {
   return value;
 }
 
-function resolveBindHost(argv: string[]): string {
+function resolveBindHost(argv: string[], windowsOrWsl = false): string {
   const args = argv.filter((arg) => arg !== "--");
   const extensionOnly = args.includes("--extension-only");
   const explicitBindHost = getStringFlag(args, "--bind");
-  return explicitBindHost ?? (extensionOnly ? "127.0.0.1" : "0.0.0.0");
+  const extensionOnlyDefaultBindHost = windowsOrWsl ? "0.0.0.0" : "127.0.0.1";
+  return explicitBindHost ?? (extensionOnly ? extensionOnlyDefaultBindHost : "0.0.0.0");
 }
 
 function shouldRunAutoFix(argv: string[], hostCanAutoFix: boolean): boolean {
@@ -70,8 +71,12 @@ describe("bin arg command detection", () => {
 });
 
 describe("bin extension-only option behavior", () => {
-  it("defaults bind host to localhost in extension-only mode", () => {
+  it("defaults bind host to localhost in extension-only mode outside Windows/WSL", () => {
     expect(resolveBindHost(["--extension-only"])).toBe("127.0.0.1");
+  });
+
+  it("defaults bind host to 0.0.0.0 in extension-only mode on Windows/WSL", () => {
+    expect(resolveBindHost(["--extension-only"], true)).toBe("0.0.0.0");
   });
 
   it("keeps default bind host when extension-only is not set", () => {
