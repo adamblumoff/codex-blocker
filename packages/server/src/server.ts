@@ -2,6 +2,9 @@ import { createServer, type IncomingMessage, type ServerResponse } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import type {
   ClientMessage,
+  ExtensionPairConfirmRequest,
+  ExtensionPairStartRequest,
+  ExtensionPairStartResponse,
   MobileDiscoveryResponse,
   MobilePairConfirmRequest,
   MobilePairConfirmResponse,
@@ -12,12 +15,13 @@ import { DEFAULT_PORT } from "./types.js";
 import { SessionState, state as defaultState } from "./state.js";
 import { CodexSessionWatcher } from "./codex.js";
 import {
-  MobilePairingManager,
+  ExtensionPairingManager,
+  MobileQrPairingManager,
   createServerInstanceId,
 } from "./mobile.js";
 import { publishMobileService, type MdnsServiceHandle } from "./mdns.js";
 import {
-  createAuthToken,
+  createAuthToken
 } from "./auth-token.js";
 import {
   PAIRING_QR_FORMAT,
@@ -41,7 +45,8 @@ type PairConfirmState = { failures: number; resetAt: number; lockoutUntil: numbe
 
 const rateByIp = new Map<string, RateState>();
 const wsConnectionsByIp = new Map<string, number>();
-const pairConfirmByIp = new Map<string, PairConfirmState>();
+const extensionPairConfirmByIp = new Map<string, PairConfirmState>();
+const mobilePairConfirmByIp = new Map<string, PairConfirmState>();
 
 const CHROME_EXTENSION_ID_PATTERN = /^[a-p]{32}$/;
 
@@ -80,34 +85,46 @@ function checkRateLimit(ip: string): boolean {
   return true;
 }
 
-function getPairConfirmState(ip: string): PairConfirmState {
+function getPairConfirmState(
+  lockoutStore: Map<string, PairConfirmState>,
+  ip: string
+): PairConfirmState {
   const now = Date.now();
-  const current = pairConfirmByIp.get(ip);
+  const current = lockoutStore.get(ip);
   if (!current || current.resetAt <= now) {
     const next = {
       failures: 0,
       resetAt: now + PAIR_CONFIRM_WINDOW_MS,
       lockoutUntil: 0,
     };
-    pairConfirmByIp.set(ip, next);
+    lockoutStore.set(ip, next);
     return next;
   }
   return current;
 }
 
-function canAttemptPairConfirm(ip: string): boolean {
-  const state = getPairConfirmState(ip);
+function canAttemptPairConfirm(
+  lockoutStore: Map<string, PairConfirmState>,
+  ip: string
+): boolean {
+  const state = getPairConfirmState(lockoutStore, ip);
   return state.lockoutUntil <= Date.now();
 }
 
-function getPairConfirmRetryAfterMs(ip: string): number {
-  const state = getPairConfirmState(ip);
+function getPairConfirmRetryAfterMs(
+  lockoutStore: Map<string, PairConfirmState>,
+  ip: string
+): number {
+  const state = getPairConfirmState(lockoutStore, ip);
   const remaining = state.lockoutUntil - Date.now();
   return remaining > 0 ? remaining : 0;
 }
 
-function recordPairConfirmFailure(ip: string): void {
-  const state = getPairConfirmState(ip);
+function recordPairConfirmFailure(
+  lockoutStore: Map<string, PairConfirmState>,
+  ip: string
+): void {
+  const state = getPairConfirmState(lockoutStore, ip);
   state.failures += 1;
   if (state.failures >= PAIR_CONFIRM_MAX_FAILURES) {
     state.failures = 0;
@@ -115,8 +132,11 @@ function recordPairConfirmFailure(ip: string): void {
   }
 }
 
-function clearPairConfirmFailures(ip: string): void {
-  pairConfirmByIp.delete(ip);
+function clearPairConfirmFailures(
+  lockoutStore: Map<string, PairConfirmState>,
+  ip: string
+): void {
+  lockoutStore.delete(ip);
 }
 
 function readAuthToken(req: IncomingMessage, url: URL): string | null {
@@ -248,7 +268,8 @@ export type ServerOptions = {
   mobile?: boolean;
   mobileServiceName?: string;
   publishMdns?: boolean;
-  mobilePairingManager?: MobilePairingManager;
+  extensionPairingManager?: ExtensionPairingManager;
+  mobileQrPairingManager?: MobileQrPairingManager;
   mobileQrOutput?: boolean;
   autoStartMobilePairing?: boolean;
 };
@@ -278,14 +299,19 @@ export function startServer(
   let activePort = port;
   let mdnsService: MdnsServiceHandle | null = null;
 
-  const mobilePairing = mobileEnabled
-    ? options?.mobilePairingManager ??
-      new MobilePairingManager((message) => {
-        if (logBanner) {
-          console.log(message);
-        }
-      })
+  const extensionPairing = mobileEnabled
+    ? options?.extensionPairingManager ?? new ExtensionPairingManager()
     : null;
+  const mobileQrPairing = mobileEnabled
+    ? options?.mobileQrPairingManager ?? new MobileQrPairingManager()
+    : null;
+
+  const printExtensionPairingCode = (code: string) => {
+    if (!logBanner) return;
+    console.log(
+      `\n[Codex Blocker] Extension pairing code (6-digit, extension only): ${code} (expires in 2 minutes)\n`
+    );
+  };
 
   const printPairingQr = (host: string, portToUse: number, qrNonce: string, qrExpiresAt: number) => {
     if (!logBanner || !mobileQrOutput) return;
@@ -299,7 +325,7 @@ export function startServer(
     void renderPairingQr(payload)
       .then((terminalQr) => {
         console.log(
-          `[Codex Blocker] Scan this QR in the mobile app (expires in 60 seconds):\n${terminalQr}\n`
+          `[Codex Blocker] Mobile app pairing QR (QR-only, expires in 60 seconds):\n${terminalQr}\n`
         );
       })
       .catch((error) => {
@@ -309,6 +335,19 @@ export function startServer(
           }`
         );
       });
+  };
+
+  const sendPairingToken = (req: IncomingMessage, res: ServerResponse) => {
+    if (!authToken) {
+      authToken = createAuthToken();
+    }
+    const host = getResponseHost(req, bindHost, activePort);
+    const payload: MobilePairConfirmResponse = {
+      token: authToken,
+      statusUrl: `http://${host}/status`,
+      wsUrl: `ws://${host}/ws`,
+    };
+    sendJson(res, payload);
   };
 
   const server = createServer(async (req, res) => {
@@ -338,9 +377,9 @@ export function startServer(
       return;
     }
 
-    if (mobilePairing) {
+    if (extensionPairing && mobileQrPairing) {
       if (req.method === "GET" && url.pathname === "/mobile/discovery") {
-        const pairingStatus = mobilePairing.getStatus();
+        const pairingStatus = mobileQrPairing.getStatus();
         const payload: MobileDiscoveryResponse = {
           name: mobileServiceName,
           instanceId: mobileInstanceId,
@@ -352,6 +391,68 @@ export function startServer(
         return;
       }
 
+      if (req.method === "POST" && url.pathname === "/extension/pair/start") {
+        const body = await readJsonBody(req);
+        if (body === INVALID_JSON_SENTINEL) {
+          sendJson(res, { error: "Invalid JSON" }, 400);
+          return;
+        }
+        const startBody = body as Partial<ExtensionPairStartRequest>;
+        const regenerateCode = startBody.regenerateCode === true;
+        const pairingWasActive = extensionPairing.getStatus().active;
+        const pairingCode = extensionPairing.startPairing(regenerateCode);
+        if (!pairingWasActive || regenerateCode) {
+          printExtensionPairingCode(pairingCode.code);
+        }
+        const payload: ExtensionPairStartResponse = {
+          expiresAt: pairingCode.expiresAt,
+        };
+        sendJson(res, payload);
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === "/extension/pair/confirm") {
+        if (!canAttemptPairConfirm(extensionPairConfirmByIp, clientIp)) {
+          const retryAfterMs = getPairConfirmRetryAfterMs(extensionPairConfirmByIp, clientIp);
+          if (retryAfterMs > 0) {
+            res.setHeader("Retry-After", String(Math.ceil(retryAfterMs / 1_000)));
+          }
+          sendJson(
+            res,
+            {
+              error: "Too Many Requests",
+              code: "pair_confirm_locked",
+              retryAfterMs,
+            },
+            429
+          );
+          return;
+        }
+
+        const body = await readJsonBody(req);
+        if (body === INVALID_JSON_SENTINEL) {
+          sendJson(res, { error: "Invalid JSON" }, 400);
+          return;
+        }
+        const confirmBody = body as Partial<ExtensionPairConfirmRequest>;
+        const code = typeof confirmBody.code === "string" ? confirmBody.code.trim() : "";
+        if (code.length === 0) {
+          sendJson(res, { error: "Provide extension pairing code" }, 400);
+          return;
+        }
+
+        const confirmed = extensionPairing.confirmPairingCode(code);
+        if (!confirmed) {
+          recordPairConfirmFailure(extensionPairConfirmByIp, clientIp);
+          sendJson(res, { error: "Invalid or expired extension pairing code" }, 401);
+          return;
+        }
+
+        clearPairConfirmFailures(extensionPairConfirmByIp, clientIp);
+        sendPairingToken(req, res);
+        return;
+      }
+
       if (req.method === "POST" && url.pathname === "/mobile/pair/start") {
         const body = await readJsonBody(req);
         if (body === INVALID_JSON_SENTINEL) {
@@ -359,11 +460,10 @@ export function startServer(
           return;
         }
         const startBody = body as Partial<MobilePairStartRequest>;
-        const regenerateCode = startBody.regenerateCode === true;
-        const refreshQr = startBody.refreshQr !== false;
-        const pairingWasActive = mobilePairing.getStatus().active;
-        const pairingCode = mobilePairing.startPairing({ regenerateCode, refreshQr });
-        if (!pairingWasActive || regenerateCode || refreshQr) {
+        const refreshQr = startBody.refreshQr === true;
+        const pairingWasActive = mobileQrPairing.getStatus().active;
+        const pairingCode = mobileQrPairing.startPairing(refreshQr);
+        if (!pairingWasActive || refreshQr) {
           const rawHost = getResponseHost(req, bindHost, activePort);
           const hostInfo = splitHostAndPort(rawHost, activePort);
           printPairingQr(
@@ -383,8 +483,8 @@ export function startServer(
       }
 
       if (req.method === "POST" && url.pathname === "/mobile/pair/confirm") {
-        if (!canAttemptPairConfirm(clientIp)) {
-          const retryAfterMs = getPairConfirmRetryAfterMs(clientIp);
+        if (!canAttemptPairConfirm(mobilePairConfirmByIp, clientIp)) {
+          const retryAfterMs = getPairConfirmRetryAfterMs(mobilePairConfirmByIp, clientIp);
           if (retryAfterMs > 0) {
             res.setHeader("Retry-After", String(Math.ceil(retryAfterMs / 1_000)));
           }
@@ -407,43 +507,23 @@ export function startServer(
         }
 
         const confirmBody = body as Partial<MobilePairConfirmRequest>;
-        const code = typeof confirmBody.code === "string" ? confirmBody.code.trim() : "";
         const qrNonce =
           typeof confirmBody.qrNonce === "string" ? confirmBody.qrNonce.trim() : "";
 
-        const hasCode = code.length > 0;
-        const hasQrNonce = qrNonce.length > 0;
-        if (hasCode === hasQrNonce) {
-          sendJson(res, { error: "Provide exactly one pairing credential" }, 400);
+        if (qrNonce.length === 0) {
+          sendJson(res, { error: "Provide mobile QR nonce" }, 400);
           return;
         }
 
-        const confirmed = hasCode
-          ? mobilePairing.confirmPairingCode(code)
-          : mobilePairing.confirmPairingQrNonce(qrNonce);
+        const confirmed = mobileQrPairing.confirmPairingQrNonce(qrNonce);
         if (!confirmed) {
-          recordPairConfirmFailure(clientIp);
-          sendJson(
-            res,
-            { error: hasCode ? "Invalid or expired pairing code" : "Invalid or expired QR nonce" },
-            401
-          );
+          recordPairConfirmFailure(mobilePairConfirmByIp, clientIp);
+          sendJson(res, { error: "Invalid or expired QR nonce" }, 401);
           return;
         }
 
-        clearPairConfirmFailures(clientIp);
-
-        if (!authToken) {
-          authToken = createAuthToken();
-        }
-
-        const host = getResponseHost(req, bindHost, activePort);
-        const payload: MobilePairConfirmResponse = {
-          token: authToken,
-          statusUrl: `http://${host}/status`,
-          wsUrl: `ws://${host}/ws`,
-        };
-        sendJson(res, payload);
+        clearPairConfirmFailures(mobilePairConfirmByIp, clientIp);
+        sendPairingToken(req, res);
         return;
       }
     }
@@ -555,13 +635,22 @@ export function startServer(
     activePort = actualPort;
     resolveReady(actualPort);
 
-    if (mobilePairing && autoStartMobilePairing) {
-      const pairingCode = mobilePairing.startPairing();
+    if (extensionPairing && mobileQrPairing && autoStartMobilePairing) {
+      if (logBanner) {
+        const pairingSummary = mobileQrOutput
+          ? "extension uses 6-digit code only; mobile app uses QR only."
+          : "extension uses 6-digit code only.";
+        console.log(`[Codex Blocker] Pairing paths: ${pairingSummary}`);
+      }
+      const extensionPairingCode = extensionPairing.startPairing();
+      printExtensionPairingCode(extensionPairingCode.code);
+
+      const mobilePairingCode = mobileQrPairing.startPairing();
       printPairingQr(
         "codex-blocker.local",
         actualPort,
-        pairingCode.qrNonce,
-        pairingCode.qrExpiresAt
+        mobilePairingCode.qrNonce,
+        mobilePairingCode.qrExpiresAt
       );
       if (publishMdns) {
         try {

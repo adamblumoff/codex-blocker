@@ -4,7 +4,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import WebSocket from "ws";
 import { startServer } from "../src/server.js";
-import { MobilePairingManager } from "../src/mobile.js";
+import { ExtensionPairingManager } from "../src/mobile.js";
 import { SessionState } from "../src/state.js";
 
 type ServerContext = {
@@ -44,21 +44,21 @@ describe("server integration", () => {
   beforeAll(async () => {
     const tempDir = await mkdtemp(join(tmpdir(), "codex-blocker-test-"));
     const state = new SessionState();
-    const pairing = new MobilePairingManager(() => {});
+    const pairing = new ExtensionPairingManager();
     const handle = startServer(0, {
       startWatcher: false,
       state,
       log: false,
-      mobilePairingManager: pairing,
+      extensionPairingManager: pairing,
     });
     const port = await handle.ready;
-    await fetch(`http://127.0.0.1:${port}/mobile/pair/start`, {
+    await fetch(`http://127.0.0.1:${port}/extension/pair/start`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),
     });
     const tokenResponse = await fetch(
-      `http://127.0.0.1:${port}/mobile/pair/confirm`,
+      `http://127.0.0.1:${port}/extension/pair/confirm`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -94,6 +94,22 @@ describe("server integration", () => {
     expect(res.status).toBe(200);
     const payload = (await res.json()) as Record<string, unknown>;
     expect(payload.blocked).toBe(true);
+  });
+
+  it("rejects qr payloads on extension confirm", async () => {
+    const startRes = await fetch(`http://127.0.0.1:${ctx.port}/extension/pair/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(startRes.status).toBe(200);
+
+    const invalidConfirm = await fetch(`http://127.0.0.1:${ctx.port}/extension/pair/confirm`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ qrNonce: "abc" }),
+    });
+    expect(invalidConfirm.status).toBe(400);
   });
 
   it("broadcasts state updates over WebSocket", async () => {

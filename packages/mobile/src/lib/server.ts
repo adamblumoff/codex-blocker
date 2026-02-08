@@ -2,6 +2,7 @@ import type {
   MobileDiscoveryResponse,
   MobilePairConfirmRequest,
   MobilePairConfirmResponse,
+  MobilePairStartRequest,
   MobilePairStartResponse,
   ServerMessage,
 } from "@codex-blocker/shared";
@@ -56,35 +57,20 @@ export async function fetchDiscovery(
   }
 }
 
-export async function startPairing(host: string, port = DEFAULT_PORT): Promise<MobilePairStartResponse> {
+export async function startPairing(
+  host: string,
+  port = DEFAULT_PORT,
+  request: MobilePairStartRequest = {}
+): Promise<MobilePairStartResponse> {
   const response = await fetch(buildHttpUrl(host, port, "/mobile/pair/start"), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({}),
+    body: JSON.stringify(request),
   });
   if (!response.ok) {
     throw new Error("Unable to start mobile pairing.");
   }
   return (await response.json()) as MobilePairStartResponse;
-}
-
-export async function confirmPairingCode(
-  host: string,
-  code: string,
-  port = DEFAULT_PORT
-): Promise<MobilePairConfirmResponse> {
-  const body: MobilePairConfirmRequest = { code };
-  const response = await fetch(buildHttpUrl(host, port, "/mobile/pair/confirm"), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-
-  if (!response.ok) {
-    throw new Error("Unable to confirm mobile pairing.");
-  }
-
-  return (await response.json()) as MobilePairConfirmResponse;
 }
 
 export async function confirmPairingQr(

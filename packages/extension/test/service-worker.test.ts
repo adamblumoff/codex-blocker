@@ -77,14 +77,14 @@ describe("service worker", () => {
     globalThis.fetch = fetchSpy as unknown as typeof fetch;
     fetchSpy.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url.endsWith("/mobile/pair/start")) {
+      if (url.endsWith("/extension/pair/start")) {
         return {
           ok: true,
           json: async () => ({ expiresAt: Date.now() + 120_000 }),
         } as Response;
       }
 
-      if (url.endsWith("/mobile/pair/confirm")) {
+      if (url.endsWith("/extension/pair/confirm")) {
         const parsed = JSON.parse((init?.body as string) ?? "{}");
         if (parsed.code === "123456") {
           return {
@@ -182,11 +182,11 @@ describe("service worker", () => {
     await Promise.resolve();
 
     const initialStartCall = fetchSpy.mock.calls.find(
-      (call) => String(call[0]).endsWith("/mobile/pair/start")
+      (call) => String(call[0]).endsWith("/extension/pair/start")
     );
     expect(initialStartCall).toBeDefined();
     const initialStartInit = initialStartCall?.[1] as RequestInit;
-    expect(JSON.parse(String(initialStartInit.body))).toEqual({ refreshQr: false });
+    expect(JSON.parse(String(initialStartInit.body))).toEqual({});
 
     const initialState = await sendRuntimeMessage({ type: "GET_STATE" });
     expect(initialState.pairingRequired).toBe(true);
@@ -248,23 +248,23 @@ describe("service worker", () => {
     expect(response).toEqual({ success: true, expiresAt: expect.any(Number) });
 
     const startCall = fetchSpy.mock.calls.find(
-      (call) => String(call[0]).endsWith("/mobile/pair/start")
+      (call) => String(call[0]).endsWith("/extension/pair/start")
     );
     expect(startCall).toBeDefined();
     const init = startCall?.[1] as RequestInit;
-    expect(JSON.parse(String(init.body))).toEqual({ regenerateCode: true, refreshQr: true });
+    expect(JSON.parse(String(init.body))).toEqual({ regenerateCode: true });
   });
 
   it("returns a lockout-specific error when pairing is rate limited", async () => {
     fetchSpy.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url.endsWith("/mobile/pair/start")) {
+      if (url.endsWith("/extension/pair/start")) {
         return {
           ok: true,
           json: async () => ({ expiresAt: Date.now() + 120_000 }),
         } as Response;
       }
-      if (url.endsWith("/mobile/pair/confirm")) {
+      if (url.endsWith("/extension/pair/confirm")) {
         const parsed = JSON.parse((init?.body as string) ?? "{}");
         if (parsed.code === "777777") {
           return {

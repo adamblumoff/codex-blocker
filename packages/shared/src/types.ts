@@ -37,6 +37,18 @@ export interface MobileDiscoveryResponse {
   pairingExpiresAt: number | null;
 }
 
+export interface ExtensionPairStartResponse {
+  expiresAt: number;
+}
+
+export interface ExtensionPairStartRequest {
+  regenerateCode?: boolean;
+}
+
+export interface ExtensionPairConfirmRequest {
+  code?: string;
+}
+
 export interface MobilePairStartResponse {
   expiresAt: number;
   qrExpiresAt: number;
@@ -44,11 +56,10 @@ export interface MobilePairStartResponse {
 }
 
 export interface MobilePairStartRequest {
-  regenerateCode?: boolean;
+  refreshQr?: boolean;
 }
 
 export interface MobilePairConfirmRequest {
-  code?: string;
   qrNonce?: string;
 }
 

@@ -1,74 +1,44 @@
 import { randomBytes, randomInt } from "crypto";
-import {
-  MOBILE_PAIRING_TTL_MS,
-  MOBILE_QR_PAIRING_TTL_MS,
-} from "./types.js";
+import { MOBILE_PAIRING_TTL_MS, MOBILE_QR_PAIRING_TTL_MS } from "./types.js";
 
-type PairingRecord = {
+type ExtensionPairingRecord = {
   code: string;
+  expiresAt: number;
+};
+
+type MobileQrPairingRecord = {
   expiresAt: number;
   qrNonce: string;
   qrExpiresAt: number;
 };
-
-type Logger = (message: string) => void;
 
 export type PairingStatus = {
   active: boolean;
   expiresAt: number | null;
 };
 
-export type PairingCode = {
+export type ExtensionPairingCode = {
   code: string;
   expiresAt: number;
-  qrNonce: string;
-  qrExpiresAt: number;
 };
 
-export type StartPairingOptions = {
-  regenerateCode?: boolean;
-  refreshQr?: boolean;
-};
+export class ExtensionPairingManager {
+  private pairing: ExtensionPairingRecord | null = null;
 
-export class MobilePairingManager {
-  private pairing: PairingRecord | null = null;
+  constructor(private readonly now: () => number = () => Date.now()) {}
 
-  constructor(
-    private readonly log: Logger = () => {},
-    private readonly now: () => number = () => Date.now()
-  ) {}
-
-  startPairing(options: StartPairingOptions = {}): PairingCode {
-    const regenerateCode = options.regenerateCode === true;
-    const refreshQr = options.refreshQr !== false;
+  startPairing(regenerateCode = false): ExtensionPairingCode {
     this.expireIfNeeded();
     if (this.pairing && !regenerateCode) {
-      if (!refreshQr) {
-        return { ...this.pairing };
-      }
-      const refreshed = {
-        ...this.pairing,
-        qrNonce: randomBytes(16).toString("hex"),
-        qrExpiresAt: this.now() + MOBILE_QR_PAIRING_TTL_MS,
-      };
-      this.pairing = refreshed;
-      this.log(
-        `\n[Codex Blocker] Mobile pairing code: ${refreshed.code} (expires in 2 minutes)\n`
-      );
-      return { ...refreshed };
+      return { ...this.pairing };
     }
 
     const next = {
       code: randomInt(0, 1_000_000).toString().padStart(6, "0"),
       expiresAt: this.now() + MOBILE_PAIRING_TTL_MS,
-      qrNonce: randomBytes(16).toString("hex"),
-      qrExpiresAt: this.now() + MOBILE_QR_PAIRING_TTL_MS,
     };
     this.pairing = next;
-    this.log(
-      `\n[Codex Blocker] Mobile pairing code: ${next.code} (expires in 2 minutes)\n`
-    );
-    return next;
+    return { ...next };
   }
 
   getStatus(): PairingStatus {
@@ -79,16 +49,64 @@ export class MobilePairingManager {
     };
   }
 
-  confirmPairing(code: string): boolean {
-    return this.confirmPairingCode(code);
-  }
-
   confirmPairingCode(code: string): boolean {
     this.expireIfNeeded();
     if (!this.pairing) return false;
     if (code.trim() !== this.pairing.code) return false;
     this.pairing = null;
     return true;
+  }
+
+  private expireIfNeeded(): void {
+    if (!this.pairing) return;
+    if (this.now() >= this.pairing.expiresAt) {
+      this.pairing = null;
+    }
+  }
+}
+
+export type MobileQrPairingCode = {
+  expiresAt: number;
+  qrNonce: string;
+  qrExpiresAt: number;
+};
+
+export class MobileQrPairingManager {
+  private pairing: MobileQrPairingRecord | null = null;
+
+  constructor(private readonly now: () => number = () => Date.now()) {}
+
+  startPairing(refreshQr = false): MobileQrPairingCode {
+    this.expireIfNeeded();
+    if (this.pairing && !refreshQr) {
+      return { ...this.pairing };
+    }
+
+    if (this.pairing && refreshQr) {
+      const refreshed = {
+        ...this.pairing,
+        qrNonce: randomBytes(16).toString("hex"),
+        qrExpiresAt: this.now() + MOBILE_QR_PAIRING_TTL_MS,
+      };
+      this.pairing = refreshed;
+      return { ...refreshed };
+    }
+
+    const next = {
+      expiresAt: this.now() + MOBILE_PAIRING_TTL_MS,
+      qrNonce: randomBytes(16).toString("hex"),
+      qrExpiresAt: this.now() + MOBILE_QR_PAIRING_TTL_MS,
+    };
+    this.pairing = next;
+    return { ...next };
+  }
+
+  getStatus(): PairingStatus {
+    this.expireIfNeeded();
+    return {
+      active: this.pairing !== null,
+      expiresAt: this.pairing?.expiresAt ?? null,
+    };
   }
 
   confirmPairingQrNonce(qrNonce: string): boolean {
@@ -106,10 +124,6 @@ export class MobilePairingManager {
       this.pairing = null;
     }
   }
-}
-
-export function createServerToken(): string {
-  return randomBytes(32).toString("hex");
 }
 
 export function createServerInstanceId(): string {

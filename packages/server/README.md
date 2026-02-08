@@ -103,13 +103,17 @@ If you suspect token exposure, run `npx codex-blocker mobile:rotate-token` and r
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/status` | GET | Returns current state (sessions, blocked status) |
+| `/extension/pair/start` | POST | Activates/reuses extension 6-digit pairing code in terminal (2 minute TTL) |
+| `/extension/pair/confirm` | POST | Exchanges valid extension 6-digit code for auth token + endpoint URLs |
 | `/mobile/discovery` | GET | Returns local discovery metadata for mobile clients |
-| `/mobile/pair/start` | POST | Activates/reuses a 6-digit pairing code in the server terminal (2 minute TTL) |
-| `/mobile/pair/confirm` | POST | Exchanges valid pairing code for auth token + endpoint URLs |
+| `/mobile/pair/start` | POST | Activates/reuses mobile QR pairing window (2 minute TTL; QR nonce TTL 60 seconds) |
+| `/mobile/pair/confirm` | POST | Exchanges valid mobile QR nonce for auth token + endpoint URLs |
+
+`POST /extension/pair/start` accepts:
+- `regenerateCode?: boolean` (rotate 6-digit code)
 
 `POST /mobile/pair/start` accepts:
-- `regenerateCode?: boolean` (rotate 6-digit code)
-- `refreshQr?: boolean` (default `true`; refresh terminal QR nonce/print)
+- `refreshQr?: boolean` (default `false`; refresh terminal QR nonce/print only when explicitly requested)
 
 ### WebSocket
 

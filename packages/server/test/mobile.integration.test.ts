@@ -3,7 +3,7 @@ import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import WebSocket from "ws";
-import { MobilePairingManager } from "../src/mobile.js";
+import { MobileQrPairingManager } from "../src/mobile.js";
 import { startServer } from "../src/server.js";
 import { SessionState } from "../src/state.js";
 
@@ -13,7 +13,7 @@ type MobileContext = {
   tempDir: string;
   state: SessionState;
   token: string;
-  pairing: MobilePairingManager;
+  mobilePairing: MobileQrPairingManager;
 };
 
 function waitForMessage(ws: WebSocket): Promise<Record<string, unknown>> {
@@ -41,17 +41,17 @@ describe("mobile integration", () => {
   beforeAll(async () => {
     const tempDir = await mkdtemp(join(tmpdir(), "codex-blocker-mobile-test-"));
     const state = new SessionState();
-    const pairing = new MobilePairingManager(() => {});
+    const pairing = new MobileQrPairingManager();
     const handle = startServer(0, {
       startWatcher: false,
       state,
       mobile: true,
       publishMdns: false,
       log: false,
-      mobilePairingManager: pairing,
+      mobileQrPairingManager: pairing,
     });
     const port = await handle.ready;
-    Object.assign(ctx, { handle, port, tempDir, state, pairing });
+    Object.assign(ctx, { handle, port, tempDir, state, mobilePairing: pairing });
   });
 
   afterAll(async () => {
@@ -92,7 +92,7 @@ describe("mobile integration", () => {
     const confirmRes = await fetch(`http://127.0.0.1:${ctx.port}/mobile/pair/confirm`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ qrNonce: ctx.pairing?.startPairing().qrNonce }),
+      body: JSON.stringify({ qrNonce: ctx.mobilePairing?.startPairing().qrNonce }),
     });
     expect(confirmRes.status).toBe(200);
     const confirmPayload = (await confirmRes.json()) as Record<string, unknown>;
@@ -100,14 +100,14 @@ describe("mobile integration", () => {
     ctx.token = confirmPayload.token as string;
   });
 
-  it("keeps the current qr nonce when refreshQr is disabled", async () => {
-    const existingPairing = ctx.pairing?.startPairing();
+  it("keeps the current qr nonce when refreshQr is not requested", async () => {
+    const existingPairing = ctx.mobilePairing?.startPairing();
     expect(existingPairing).toBeTruthy();
 
     const startRes = await fetch(`http://127.0.0.1:${ctx.port}/mobile/pair/start`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refreshQr: false }),
+      body: JSON.stringify({}),
     });
     expect(startRes.status).toBe(200);
     const startPayload = (await startRes.json()) as Record<string, unknown>;
@@ -125,23 +125,54 @@ describe("mobile integration", () => {
     ctx.token = confirmPayload.token as string;
   });
 
-  it("regenerates terminal code when regenerateCode is requested", async () => {
-    const first = ctx.pairing?.startPairing().code;
-    expect(typeof first).toBe("string");
+  it("refreshes qr nonce only when refreshQr is explicitly requested", async () => {
+    const existingPairing = ctx.mobilePairing?.startPairing();
+    expect(existingPairing).toBeTruthy();
 
-    const regen = await fetch(`http://127.0.0.1:${ctx.port}/mobile/pair/start`, {
+    const startRes = await fetch(`http://127.0.0.1:${ctx.port}/mobile/pair/start`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ regenerateCode: true }),
+      body: JSON.stringify({ refreshQr: true }),
     });
-    expect(regen.status).toBe(200);
+    expect(startRes.status).toBe(200);
+    const startPayload = (await startRes.json()) as Record<string, unknown>;
+    expect(startPayload.expiresAt).toBe(existingPairing?.expiresAt);
+    expect(Number(startPayload.qrExpiresAt)).toBeGreaterThan(existingPairing?.qrExpiresAt ?? 0);
 
     const staleConfirm = await fetch(`http://127.0.0.1:${ctx.port}/mobile/pair/confirm`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code: first }),
+      body: JSON.stringify({ qrNonce: existingPairing?.qrNonce }),
     });
     expect(staleConfirm.status).toBe(401);
+
+    const refreshedPairing = ctx.mobilePairing?.startPairing();
+    expect(refreshedPairing).toBeTruthy();
+
+    const refreshedConfirm = await fetch(`http://127.0.0.1:${ctx.port}/mobile/pair/confirm`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ qrNonce: refreshedPairing?.qrNonce }),
+    });
+    expect(refreshedConfirm.status).toBe(200);
+    const refreshedConfirmPayload = (await refreshedConfirm.json()) as Record<string, unknown>;
+    expect(typeof refreshedConfirmPayload.token).toBe("string");
+    ctx.token = refreshedConfirmPayload.token as string;
+  });
+
+  it("rejects code payloads for mobile qr confirm", async () => {
+    await fetch(`http://127.0.0.1:${ctx.port}/mobile/pair/start`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+
+    const confirmWithCode = await fetch(`http://127.0.0.1:${ctx.port}/mobile/pair/confirm`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code: "123456" }),
+    });
+    expect(confirmWithCode.status).toBe(400);
   });
 
   it("rejects invalid confirm payload shape", async () => {
@@ -152,12 +183,12 @@ describe("mobile integration", () => {
     });
     expect(missing.status).toBe(400);
 
-    const both = await fetch(`http://127.0.0.1:${ctx.port}/mobile/pair/confirm`, {
+    const withCodeOnly = await fetch(`http://127.0.0.1:${ctx.port}/mobile/pair/confirm`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ code: "123456", qrNonce: "abc" }),
+      body: JSON.stringify({ code: "123456" }),
     });
-    expect(both.status).toBe(400);
+    expect(withCodeOnly.status).toBe(400);
   });
 
   it("locks out repeated invalid pairing attempts", async () => {

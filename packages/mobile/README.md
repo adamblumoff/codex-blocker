@@ -20,7 +20,7 @@ npx codex-blocker
 ## Current capabilities
 
 - Auto-discovery over local Wi-Fi (`/mobile/discovery`)
-- Terminal-code pairing (`/mobile/pair/start` + `/mobile/pair/confirm`)
+- QR-only pairing (`/mobile/pair/start` + `/mobile/pair/confirm`)
 - Realtime state updates from `/ws`
 - Session-only auth token (in memory only) + pinned server identity (`instanceId`)
 - Local notification toggle for Codex idle/resume transitions

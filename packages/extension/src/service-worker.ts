@@ -261,12 +261,11 @@ function teardownSocket() {
 
 type PairStartRequest = {
   regenerateCode?: boolean;
-  refreshQr?: boolean;
 };
 
 async function requestPairingWindow(request: PairStartRequest = {}): Promise<number | null> {
   try {
-    const response = await fetch(`${SERVER_HTTP_BASE}/mobile/pair/start`, {
+    const response = await fetch(`${SERVER_HTTP_BASE}/extension/pair/start`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(request),
@@ -296,7 +295,7 @@ async function enterPairingMode(reason?: string): Promise<void> {
   await clearSessionToken();
 
   state.pairingRequired = true;
-  const expiresAt = await requestPairingWindow({ refreshQr: false });
+  const expiresAt = await requestPairingWindow();
   state.pairingExpiresAt = expiresAt;
   setConnectionPhase(
     "pairing",
@@ -394,7 +393,7 @@ async function confirmPairingCode(rawCode: string): Promise<{ ok: true } | { ok:
 
   let response: Response;
   try {
-    response = await fetch(`${SERVER_HTTP_BASE}/mobile/pair/confirm`, {
+    response = await fetch(`${SERVER_HTTP_BASE}/extension/pair/confirm`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ code }),
@@ -455,7 +454,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 
   if (message.type === "START_PAIRING") {
     void (async () => {
-      const expiresAt = await requestPairingWindow({ regenerateCode: true, refreshQr: true });
+      const expiresAt = await requestPairingWindow({ regenerateCode: true });
       state.pairingRequired = true;
       state.pairingExpiresAt = expiresAt;
       setConnectionPhase(

@@ -68,6 +68,7 @@ pnpm --filter @codex-blocker/mobile dev
 
 Then open Expo Go on iPhone and connect to the project.
 When pairing is required, scan the QR shown in the server terminal from the mobile app.
+Extension pairing is separate and always uses the 6-digit terminal code (no QR scan).
 
 ## Server CLI
 

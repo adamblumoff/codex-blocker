@@ -21,6 +21,8 @@ Default behavior:
 - Binds to `0.0.0.0`
 - Publishes mDNS service `_codex-blocker._tcp`
 - Exposes pairing/discovery endpoints:
+  - `POST /extension/pair/start`
+  - `POST /extension/pair/confirm`
   - `GET /mobile/discovery`
   - `POST /mobile/pair/start`
   - `POST /mobile/pair/confirm`
@@ -48,12 +50,12 @@ Behavior:
 
 ## End-to-End Pairing Flow
 
-1. Server starts and prints a mobile pairing QR in terminal (short-lived, one-time nonce).
-2. Client discovers server (`/mobile/discovery`).
-3. Client ensures pairing window (`/mobile/pair/start`).
-4. Mobile app scans terminal QR and posts nonce to `/mobile/pair/confirm`.
-5. Extension can still pair by entering code into `/mobile/pair/confirm`.
-6. Client connects to `/status` + `/ws` with that token.
+1. Server starts and prints both pairing artifacts with explicit labels:
+   - Extension: 6-digit code only.
+   - Mobile app: QR only.
+2. Extension starts code pairing (`/extension/pair/start`) and confirms with `/extension/pair/confirm`.
+3. Mobile app discovers server (`/mobile/discovery`), starts QR pairing (`/mobile/pair/start`), then confirms with `/mobile/pair/confirm`.
+4. After confirm, client connects to `/status` + `/ws` using the issued token.
 
 Mobile app pairing UX:
 
@@ -66,16 +68,19 @@ Mobile app pairing UX:
 - `qrExpiresAt` (current QR nonce expiry)
 - `qrFormat` (`cbm-v1`)
 
+`/extension/pair/start` request supports:
+
+- `regenerateCode` (optional, default `false`) — force a new 6-digit extension pairing code.
+
 `/mobile/pair/start` request supports:
 
-- `regenerateCode` (optional, default `false`) — force a new 6-digit code + fresh QR nonce.
-- `refreshQr` (optional, default `true`) — refresh and print a new terminal QR for the current code.
-  - Use `refreshQr: false` for extension bootstrap flows that only need pairing-window metadata and should not reprint QR on startup.
+- `refreshQr` (optional, default `false`) — refresh and print a new terminal QR for mobile pairing.
 
 Pairing brute-force guard:
 
 - 6 failed confirms per minute lock pairing confirms for that client for 2 minutes.
-- Extension shows a lockout-specific message when this limit is hit.
+- Extension and mobile lockouts are tracked independently.
+- Extension shows a lockout-specific message when its confirm limit is hit.
 - Extension "Refresh Terminal Code" requests a freshly regenerated 6-digit code.
 
 ## Session Security Model

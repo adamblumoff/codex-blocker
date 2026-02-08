@@ -181,7 +181,7 @@ export function useCodexConnection() {
         pairingNotice: null,
       }));
 
-      const pairing = await startPairing(hostToPair, portToPair);
+      const pairing = await startPairing(hostToPair, portToPair, { refreshQr: false });
       pairingRef.current = {
         host: hostToPair,
         port: portToPair,
@@ -419,7 +419,7 @@ export function useCodexConnection() {
     }
 
     try {
-      const refreshed = await startPairing(pending.host, pending.port);
+      const refreshed = await startPairing(pending.host, pending.port, { refreshQr: true });
       pairingRef.current = {
         ...pending,
         expiresAt: refreshed.expiresAt,

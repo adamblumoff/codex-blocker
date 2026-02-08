@@ -4,27 +4,27 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { startServer } from "../src/server.js";
 import { SessionState } from "../src/state.js";
-import { MobilePairingManager } from "../src/mobile.js";
+import { ExtensionPairingManager } from "../src/mobile.js";
 
 type SessionAuthContext = {
   tempDir: string;
   state: SessionState;
   handle: ReturnType<typeof startServer>;
   port: number;
-  pairing: MobilePairingManager;
+  pairing: ExtensionPairingManager;
 };
 
 async function startSessionServer(
   tempDir: string,
   state: SessionState
 ): Promise<Pick<SessionAuthContext, "handle" | "port" | "pairing">> {
-  const pairing = new MobilePairingManager(() => {});
+  const pairing = new ExtensionPairingManager();
   const handle = startServer(0, {
     state,
     startWatcher: false,
     publishMdns: false,
     log: false,
-    mobilePairingManager: pairing,
+    extensionPairingManager: pairing,
   });
   const port = await handle.ready;
   return { handle, port, pairing };
@@ -63,13 +63,13 @@ describe("session-scoped auth", () => {
   });
 
   it("invalidates old tokens after a server restart", async () => {
-    await fetch(`http://127.0.0.1:${ctx.port}/mobile/pair/start`, {
+    await fetch(`http://127.0.0.1:${ctx.port}/extension/pair/start`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),
     });
     const tokenResponse = await fetch(
-      `http://127.0.0.1:${ctx.port}/mobile/pair/confirm`,
+      `http://127.0.0.1:${ctx.port}/extension/pair/confirm`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
