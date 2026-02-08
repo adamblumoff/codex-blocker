@@ -10,6 +10,7 @@
 `codex-blocker` now starts one unified server mode by default:
 
 - `npx codex-blocker`
+- `npx codex-blocker --extension-only` for localhost-only extension mode (mobile LAN discovery disabled)
 - `npx codex-blocker mobile:doctor`
 - `npx codex-blocker mobile:fix`
 - `npx codex-blocker mobile:fix --allow-public` only when Public-profile Wi-Fi access is required
@@ -28,6 +29,21 @@ Default behavior:
   - `GET ws://<host>:8765/ws` (token via query/header/subprotocol)
 
 SECURITY NOTE: RUN `npx codex-blocker mobile:remove` WHEN YOU ARE DONE USING MOBILE LAN ACCESS.
+
+## Extension-Only Mode
+
+Use this when you only want browser extension support and do not want mobile LAN setup:
+
+```bash
+npx codex-blocker --extension-only
+```
+
+Behavior:
+
+- Default bind host changes to `127.0.0.1` (unless `--bind` is explicitly provided).
+- mDNS publishing is disabled.
+- Startup `mobile:doctor`/`mobile:fix` auto-run is disabled.
+- Extension pairing still works on localhost.
 
 ## End-to-End Pairing Flow
 

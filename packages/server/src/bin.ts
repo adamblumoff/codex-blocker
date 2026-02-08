@@ -47,10 +47,11 @@ Options:
   --remove    Remove Codex setup (no-op)
   --port      Server port (default: ${DEFAULT_PORT})
   --mobile    Deprecated alias (mobile mode is always enabled)
+  --extension-only  Run localhost-only extension mode (disable mobile LAN mDNS + auto-fix)
   --allow-public  Allow firewall opening on Public profile (higher risk)
   --no-auto-fix  Disable automatic mobile doctor+fix on startup
   --mobile-no-auto-fix  Backward-compatible alias for --no-auto-fix
-  --bind      Bind host (default: 0.0.0.0)
+  --bind      Bind host (default: 0.0.0.0, or 127.0.0.1 with --extension-only)
   --mobile-name  Friendly mobile discovery name
   --version   Show version
   --help      Show this help message
@@ -58,6 +59,7 @@ Options:
 Examples:
   npx codex-blocker            # Start the server
   npx codex-blocker --port 9000
+  npx codex-blocker --extension-only
   npx codex-blocker --allow-public
   npx codex-blocker --bind 0.0.0.0
   npx codex-blocker mobile:doctor
@@ -131,7 +133,9 @@ async function main(): Promise<void> {
   }
 
   const allowPublicFirewallRule = args.includes("--allow-public");
-  const bindHost = getStringFlag("--bind") ?? "0.0.0.0";
+  const extensionOnly = args.includes("--extension-only");
+  const explicitBindHost = getStringFlag("--bind");
+  const bindHost = explicitBindHost ?? (extensionOnly ? "127.0.0.1" : "0.0.0.0");
   const mobileServiceName = getStringFlag("--mobile-name") ?? "Codex Blocker";
 
   if (command === "mobile:doctor") {
@@ -161,19 +165,38 @@ async function main(): Promise<void> {
     mobile: true,
     bindHost,
     mobileServiceName,
+    publishMdns: !extensionOnly,
   });
 
   const autoFixDisabled =
     args.includes("--no-auto-fix") || args.includes("--mobile-no-auto-fix");
   const shouldAutoFix = canAutoConfigureHostNetworking();
 
-  if (allowPublicFirewallRule) {
+  if (extensionOnly) {
+    const ignoredFlags: string[] = [];
+    if (allowPublicFirewallRule) ignoredFlags.push("--allow-public");
+    if (autoFixDisabled) ignoredFlags.push("--no-auto-fix/--mobile-no-auto-fix");
+    if (args.includes("--mobile-name")) ignoredFlags.push("--mobile-name");
+    if (ignoredFlags.length > 0) {
+      console.warn(
+        `[Codex Blocker] Extension-only mode ignores ${ignoredFlags.join(", ")}.\n`
+      );
+    }
+    console.log(
+      "[Codex Blocker] Extension-only mode active: mobile LAN discovery and auto-fix are disabled."
+    );
+    if (!explicitBindHost) {
+      console.log("[Codex Blocker] Binding to localhost (127.0.0.1). Use --bind to override.\n");
+    }
+  }
+
+  if (allowPublicFirewallRule && !extensionOnly) {
     console.warn(
       "[Codex Blocker] SECURITY WARNING: --allow-public ENABLES FIREWALL ACCESS ON PUBLIC WI-FI.\n"
     );
   }
 
-  if (!autoFixDisabled && shouldAutoFix) {
+  if (!extensionOnly && !autoFixDisabled && shouldAutoFix) {
     void (async () => {
       const activePort = await handle.ready;
       console.log(
@@ -194,7 +217,7 @@ async function main(): Promise<void> {
         );
       }
     })();
-  } else {
+  } else if (!extensionOnly) {
     void (async () => {
       const activePort = await handle.ready;
       console.log(
