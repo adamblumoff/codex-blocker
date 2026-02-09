@@ -69,6 +69,8 @@ export default function App() {
   const [scannerBusy, setScannerBusy] = useState(false);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const previousBlockedRef = useRef<boolean | null>(null);
+  const scannerInFlightRef = useRef(false);
+  const scannerBusyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     void loadPreferences().then(setPreferences);
@@ -78,8 +80,21 @@ export default function App() {
     if (phase !== "pairing") {
       setScannerOpen(false);
       setScannerBusy(false);
+      scannerInFlightRef.current = false;
+      if (scannerBusyTimeoutRef.current) {
+        clearTimeout(scannerBusyTimeoutRef.current);
+        scannerBusyTimeoutRef.current = null;
+      }
     }
   }, [phase]);
+
+  useEffect(() => {
+    return () => {
+      if (scannerBusyTimeoutRef.current) {
+        clearTimeout(scannerBusyTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const openScanner = useCallback(async () => {
     if (cameraPermission?.granted) {
@@ -94,7 +109,9 @@ export default function App() {
 
   const onBarcodeScanned = useCallback(
     (event: { data: string }) => {
-      if (!scannerOpen || scannerBusy) return;
+      // Camera scanners can emit duplicate reads before React state updates apply.
+      if (!scannerOpen || scannerInFlightRef.current) return;
+      scannerInFlightRef.current = true;
       setScannerBusy(true);
       void submitPairingQrPayload(event.data)
         .then((success) => {
@@ -103,10 +120,17 @@ export default function App() {
           }
         })
         .finally(() => {
-          setTimeout(() => setScannerBusy(false), 650);
+          if (scannerBusyTimeoutRef.current) {
+            clearTimeout(scannerBusyTimeoutRef.current);
+          }
+          scannerBusyTimeoutRef.current = setTimeout(() => {
+            scannerInFlightRef.current = false;
+            setScannerBusy(false);
+            scannerBusyTimeoutRef.current = null;
+          }, 650);
         });
     },
-    [scannerBusy, scannerOpen, submitPairingQrPayload]
+    [scannerOpen, submitPairingQrPayload]
   );
 
   const updatePreferences = useCallback(async (next: MobilePreferences) => {
