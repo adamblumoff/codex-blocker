@@ -15,15 +15,11 @@ interface PublicState {
   forceBlock: boolean;
   forceOpen: boolean;
   serverConnected: boolean;
-  transportConnected?: boolean;
   sessions: number;
   working: number;
   waitingForInput: number;
   blocked: boolean;
   bypassActive: boolean;
-  pairingRequired?: boolean;
-  connectionPhase?: "pairing" | "connecting" | "connected" | "reconnecting" | "offline";
-  connectionMessage?: string;
 }
 
 // Track current state so we can re-render if modal gets removed
@@ -358,24 +354,11 @@ function renderState(state: PublicState): void {
   const hint = shadow.getElementById("hint");
   if (!message || !dot || !status || !hint) return;
 
-  if (state.pairingRequired || state.connectionPhase === "pairing") {
-    message.textContent = "Extension needs pairing before blocking can sync.";
-    setDotColor(dot, "red");
-    status.textContent = "Pairing Required";
-    hint.textContent =
-      state.connectionMessage ?? "Open extension popup and enter the 6-digit terminal code.";
-  } else if (state.connectionPhase === "reconnecting") {
-    message.textContent = "Connection dropped. Attempting to reconnect.";
-    setDotColor(dot, "gray");
-    status.textContent = "Reconnecting";
-    hint.textContent = state.connectionMessage ?? "Waiting for server...";
-  } else if (!state.serverConnected) {
+  if (!state.serverConnected) {
     message.textContent = "Server offline. Start the blocker server to continue.";
     setDotColor(dot, "red");
     status.textContent = "Server Offline";
-    hint.innerHTML =
-      state.connectionMessage ??
-      `Run <span style="background:#2a2a2a;padding:2px 8px;border-radius:4px;font-family:ui-monospace,monospace;font-size:12px;">npx codex-blocker</span> to start`;
+    hint.innerHTML = `Run <span style="background:#2a2a2a;padding:2px 8px;border-radius:4px;font-family:ui-monospace,monospace;font-size:12px;">npx codex-blocker</span> to start`;
   } else if (state.sessions === 0) {
     message.textContent = "No Codex sessions detected.";
     setDotColor(dot, "green");

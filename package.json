@@ -22,6 +22,6 @@
   },
   "version": "",
   "dependencies": {
-    "codex-blocker": "workspace:0.1.2"
+    "codex-blocker": "workspace:0.1.3"
   }
 }

@@ -1,98 +1,35 @@
 import { describe, expect, it } from "vitest";
 
-function parseCommandFromArgs(argv: string[]): string | null {
-  const args = argv.filter((arg) => arg !== "--");
-  const flagsWithValues = new Set(["--port", "--bind", "--mobile-name"]);
-
-  for (let index = 0; index < args.length; index += 1) {
-    const current = args[index];
-    if (current.startsWith("--")) {
-      if (flagsWithValues.has(current)) {
-        index += 1;
-      }
-      continue;
-    }
-    return current;
-  }
-
-  return null;
+function resolvePort(argv: string[]): number | null {
+  const portIndex = argv.indexOf("--port");
+  if (portIndex === -1 || !argv[portIndex + 1]) return null;
+  const parsed = parseInt(argv[portIndex + 1], 10);
+  return Number.isNaN(parsed) ? null : parsed;
 }
 
-function getStringFlag(argv: string[], flag: string): string | null {
-  const args = argv.filter((arg) => arg !== "--");
-  const index = args.indexOf(flag);
-  if (index === -1) return null;
-  const value = args[index + 1];
-  if (!value || value.startsWith("--")) return null;
-  return value;
+function isWindowsOrWslRuntime(platform: string, env: Record<string, string | undefined>): boolean {
+  if (platform === "win32") return true;
+  return Boolean(env.WSL_DISTRO_NAME || env.WSL_INTEROP);
 }
 
-function resolveBindHost(argv: string[], windowsOrWsl = false): string {
-  const args = argv.filter((arg) => arg !== "--");
-  const extensionOnly = args.includes("--extension-only");
-  const explicitBindHost = getStringFlag(args, "--bind");
-  const extensionOnlyDefaultBindHost = windowsOrWsl ? "0.0.0.0" : "127.0.0.1";
-  return explicitBindHost ?? (extensionOnly ? extensionOnlyDefaultBindHost : "0.0.0.0");
+function resolveDefaultBindHost(platform: string, env: Record<string, string | undefined>): string {
+  return isWindowsOrWslRuntime(platform, env) ? "0.0.0.0" : "127.0.0.1";
 }
 
-function shouldRunAutoFix(argv: string[], hostCanAutoFix: boolean): boolean {
-  const args = argv.filter((arg) => arg !== "--");
-  const extensionOnly = args.includes("--extension-only");
-  const autoFixDisabled =
-    args.includes("--no-auto-fix") || args.includes("--mobile-no-auto-fix");
-  return !extensionOnly && !autoFixDisabled && hostCanAutoFix;
-}
-
-describe("bin arg command detection", () => {
-  it("finds mobile:doctor with forwarded pnpm separator", () => {
-    expect(parseCommandFromArgs(["--", "mobile:doctor", "--port", "8765"]))
-      .toBe("mobile:doctor");
+describe("bin defaults", () => {
+  it("parses a custom port", () => {
+    expect(resolvePort(["--port", "9000"])).toBe(9000);
   });
 
-  it("finds mobile:remove with optional flags before command", () => {
-    expect(parseCommandFromArgs(["--port", "9000", "mobile:remove"]))
-      .toBe("mobile:remove");
+  it("returns null when no custom port is provided", () => {
+    expect(resolvePort([])).toBeNull();
   });
 
-  it("returns null when no command token is present", () => {
-    expect(parseCommandFromArgs(["--mobile", "--bind", "0.0.0.0"]))
-      .toBeNull();
+  it("uses localhost outside Windows/WSL", () => {
+    expect(resolveDefaultBindHost("linux", {})).toBe("127.0.0.1");
   });
 
-  it("accepts legacy --mobile flag before mobile subcommands", () => {
-    expect(parseCommandFromArgs(["--mobile", "mobile:doctor"]))
-      .toBe("mobile:doctor");
-  });
-
-  it("accepts mobile subcommands when --extension-only is present", () => {
-    expect(parseCommandFromArgs(["--extension-only", "mobile:doctor"]))
-      .toBe("mobile:doctor");
-  });
-});
-
-describe("bin extension-only option behavior", () => {
-  it("defaults bind host to localhost in extension-only mode outside Windows/WSL", () => {
-    expect(resolveBindHost(["--extension-only"])).toBe("127.0.0.1");
-  });
-
-  it("defaults bind host to 0.0.0.0 in extension-only mode on Windows/WSL", () => {
-    expect(resolveBindHost(["--extension-only"], true)).toBe("0.0.0.0");
-  });
-
-  it("keeps default bind host when extension-only is not set", () => {
-    expect(resolveBindHost([])).toBe("0.0.0.0");
-  });
-
-  it("allows explicit bind host override in extension-only mode", () => {
-    expect(resolveBindHost(["--extension-only", "--bind", "0.0.0.0"]))
-      .toBe("0.0.0.0");
-  });
-
-  it("disables startup auto-fix in extension-only mode", () => {
-    expect(shouldRunAutoFix(["--extension-only"], true)).toBe(false);
-  });
-
-  it("runs startup auto-fix by default when supported and not extension-only", () => {
-    expect(shouldRunAutoFix([], true)).toBe(true);
+  it("uses 0.0.0.0 inside WSL", () => {
+    expect(resolveDefaultBindHost("linux", { WSL_DISTRO_NAME: "Ubuntu" })).toBe("0.0.0.0");
   });
 });

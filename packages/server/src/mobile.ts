@@ -83,10 +83,11 @@ export class MobileQrPairingManager {
     }
 
     if (this.pairing && refreshQr) {
+      const nextQrExpiry = this.now() + MOBILE_QR_PAIRING_TTL_MS;
       const refreshed = {
         ...this.pairing,
         qrNonce: randomBytes(16).toString("hex"),
-        qrExpiresAt: this.now() + MOBILE_QR_PAIRING_TTL_MS,
+        qrExpiresAt: Math.max(nextQrExpiry, this.pairing.qrExpiresAt + 1),
       };
       this.pairing = refreshed;
       return { ...refreshed };

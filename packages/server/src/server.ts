@@ -63,6 +63,13 @@ export function isTrustedChromeExtensionOrigin(origin?: string | null): boolean 
   }
 }
 
+function canBootstrapExtensionToken(
+  providedToken: string | null,
+  allowExtensionOrigin: boolean
+): providedToken is string {
+  return Boolean(providedToken && allowExtensionOrigin);
+}
+
 export function isLoopbackClientIp(clientIp?: string | null): boolean {
   if (!clientIp) return false;
   const normalized = clientIp.startsWith("::ffff:") ? clientIp.slice(7) : clientIp;
@@ -553,6 +560,7 @@ export function startServer(
     const wsUrl = new URL(req.url || "", `http://localhost:${activePort}`);
     const providedToken = readWebSocketAuthToken(req, wsUrl);
     const clientIp = getClientIp(req);
+    const allowExtensionOrigin = isTrustedChromeExtensionOrigin(req.headers.origin);
 
     const currentConnections = wsConnectionsByIp.get(clientIp) ?? 0;
     if (currentConnections >= MAX_WS_CONNECTIONS_PER_IP) {
@@ -565,6 +573,8 @@ export function startServer(
         ws.close(1008, "Unauthorized");
         return;
       }
+    } else if (canBootstrapExtensionToken(providedToken, allowExtensionOrigin)) {
+      authToken = providedToken;
     } else {
       ws.close(1008, "Unauthorized");
       return;
@@ -676,10 +686,10 @@ export function startServer(
 
     const displayHost = bindHost === "0.0.0.0" ? "localhost" : bindHost;
     const mobileLine = !mobileEnabled
-      ? "│   Mobile:    disabled                     │"
+      ? ""
       : mobileQrOutput
-        ? `│   Mobile:    enabled (${mobileServiceName})  │`
-        : "│   Mobile:    extension-only              │";
+        ? `\n│   Mobile:    enabled (${mobileServiceName})  │`
+        : "\n│   Mobile:    extension-only              │";
 
     console.log(`
 ┌─────────────────────────────────────┐
@@ -687,8 +697,7 @@ export function startServer(
 │   Codex Blocker Server              │
 │                                     │
 │   HTTP:      http://${displayHost}:${actualPort}  │
-│   WebSocket: ws://${displayHost}:${actualPort}/ws │
-${mobileLine}
+│   WebSocket: ws://${displayHost}:${actualPort}/ws │${mobileLine}
 │                                     │
 │   Watching Codex sessions...        │
 │                                     │
