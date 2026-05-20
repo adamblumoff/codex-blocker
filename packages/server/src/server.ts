@@ -65,9 +65,10 @@ export function isTrustedChromeExtensionOrigin(origin?: string | null): boolean 
 
 function canBootstrapExtensionToken(
   providedToken: string | null,
-  allowExtensionOrigin: boolean
+  allowExtensionOrigin: boolean,
+  clientIp: string
 ): providedToken is string {
-  return Boolean(providedToken && allowExtensionOrigin);
+  return Boolean(providedToken && allowExtensionOrigin && isLoopbackClientIp(clientIp));
 }
 
 export function isLoopbackClientIp(clientIp?: string | null): boolean {
@@ -573,7 +574,7 @@ export function startServer(
         ws.close(1008, "Unauthorized");
         return;
       }
-    } else if (canBootstrapExtensionToken(providedToken, allowExtensionOrigin)) {
+    } else if (canBootstrapExtensionToken(providedToken, allowExtensionOrigin, clientIp)) {
       authToken = providedToken;
     } else {
       ws.close(1008, "Unauthorized");
