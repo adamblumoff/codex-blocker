@@ -76,10 +76,7 @@ Extension pairing is separate and always uses the 6-digit terminal code (no QR s
 # Start on custom port
 npx codex-blocker --port 9000
 
-# Start server without startup auto doctor/fix
-npx codex-blocker --no-auto-fix
-
-# Run extension-only mode (localhost-only, disables mobile LAN discovery + startup auto-fix)
+# Run extension-only mode (localhost-only, disables mobile LAN discovery)
 npx codex-blocker --extension-only
 
 # Override bind host
@@ -112,7 +109,7 @@ npx codex-blocker --version
 
 SECURITY NOTE: IF YOU ENABLE MOBILE ACCESS, RUN `npx codex-blocker mobile:remove` WHEN YOU ARE DONE TO REMOVE FIREWALL/PORTPROXY EXPOSURE.
 `mobile:fix` opens Private-profile firewall by default; Public-profile access requires `--allow-public`.
-`--extension-only` keeps the server extension-first, disables mDNS + terminal QR output (code output remains), and skips startup doctor/fix.
+`--extension-only` keeps the server extension-first and disables mobile LAN discovery and terminal QR output.
 Default bind host is `127.0.0.1` on native installs, and `0.0.0.0` on Windows/WSL so browser `localhost` can still reach the server.
 Pairing tokens are session-scoped: restarting the server invalidates old tokens and requires fresh pairing.
 Mobile app cold starts and full browser restarts also require re-pairing.
