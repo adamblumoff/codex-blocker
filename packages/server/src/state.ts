@@ -1,7 +1,15 @@
-import type { Session, CodexActivity, ServerMessage } from "./types.js";
+import type { Session, CodexActivity } from "./types.js";
 import { SESSION_TIMEOUT_MS } from "./types.js";
 
-type StateChangeCallback = (message: ServerMessage) => void;
+type StateMessage = {
+  type: "state";
+  blocked: boolean;
+  sessions: number;
+  working: number;
+  waitingForInput: number;
+};
+
+type StateChangeCallback = (message: StateMessage) => void;
 
 export class SessionState {
   private sessions: Map<string, Session> = new Map();
@@ -29,7 +37,7 @@ export class SessionState {
     }
   }
 
-  private getStateMessage(): ServerMessage {
+  private getStateMessage(): StateMessage {
     const sessions = Array.from(this.sessions.values());
     const working = sessions.filter((s) => s.status === "working").length;
     const waitingForInput = sessions.filter(

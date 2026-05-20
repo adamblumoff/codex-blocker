@@ -31,6 +31,7 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@codex-blocker/shared": "workspace:*",
     "@types/node": "^22.10.2",
     "@types/qrcode": "^1.5.5",
     "@types/ws": "^8.5.13",

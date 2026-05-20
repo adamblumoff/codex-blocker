@@ -89,6 +89,9 @@ importers:
         specifier: ^8.18.0
         version: 8.18.3
     devDependencies:
+      '@codex-blocker/shared':
+        specifier: workspace:*
+        version: link:../shared
       '@types/node':
         specifier: ^22.10.2
         version: 22.19.3
