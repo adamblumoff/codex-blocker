@@ -13,12 +13,11 @@ export function computeShouldBlock({
   working,
   waitingForInput,
 }: BlockInputs): boolean {
-  const hasActiveSession = sessions > 0;
   const hasWaitingForInput = waitingForInput > 0;
   const isIdle = working === 0;
   return (
     !bypassActive &&
-    (!serverConnected || hasWaitingForInput || (hasActiveSession && isIdle))
+    (!serverConnected || hasWaitingForInput || isIdle)
   );
 }
 
