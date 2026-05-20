@@ -6,6 +6,7 @@ describe("service worker", () => {
   let connectListener: ((port: any) => void) | null = null;
   const syncData: Record<string, unknown> = {};
   const localData: Record<string, unknown> = {};
+  const sessionData: Record<string, unknown> = {};
   const sendMessageSpy = vi.fn(() => Promise.resolve());
 
   class FakeWebSocket {
@@ -31,6 +32,7 @@ describe("service worker", () => {
     vi.useFakeTimers();
     Object.keys(syncData).forEach((key) => delete syncData[key]);
     Object.keys(localData).forEach((key) => delete localData[key]);
+    Object.keys(sessionData).forEach((key) => delete sessionData[key]);
     Object.assign(syncData, {
       bypassUntil: Date.now() + 5_000,
       pauseMedia: false,
@@ -73,6 +75,15 @@ describe("service worker", () => {
           },
           set: vi.fn((data: Record<string, unknown>, callback?: () => void) => {
             Object.assign(localData, data);
+            callback?.();
+          }),
+        },
+        session: {
+          get: (_keys: string[], callback: (result: any) => void) => {
+            callback({ ...sessionData });
+          },
+          set: vi.fn((data: Record<string, unknown>, callback?: () => void) => {
+            Object.assign(sessionData, data);
             callback?.();
           }),
         },

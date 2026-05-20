@@ -75,13 +75,13 @@ function generateToken(): string {
 
 function ensureToken(): Promise<string> {
   return new Promise((resolve) => {
-    chrome.storage.local.get([TOKEN_STORAGE_KEY], (result) => {
+    chrome.storage.session.get([TOKEN_STORAGE_KEY], (result) => {
       if (result[TOKEN_STORAGE_KEY]) {
         resolve(result[TOKEN_STORAGE_KEY] as string);
         return;
       }
       const token = generateToken();
-      chrome.storage.local.set({ [TOKEN_STORAGE_KEY]: token }, () => resolve(token));
+      chrome.storage.session.set({ [TOKEN_STORAGE_KEY]: token }, () => resolve(token));
     });
   });
 }

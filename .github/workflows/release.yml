@@ -85,6 +85,11 @@ jobs:
         id: cws_gate
         run: |
           tag="${GITHUB_REF#refs/tags/v}"
+          if [ "${CWS_AUTO_PUBLISH}" != "true" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping Chrome Web Store publish because CWS_AUTO_PUBLISH is not true."
+            exit 0
+          fi
           if [[ "$tag" == *"-alpha"* ]]; then
             echo "enabled=false" >> "$GITHUB_OUTPUT"
             echo "Skipping Chrome Web Store publish for prerelease tag: $tag"
@@ -92,6 +97,8 @@ jobs:
             echo "enabled=true" >> "$GITHUB_OUTPUT"
             echo "Chrome Web Store publish enabled for stable tag: $tag"
           fi
+        env:
+          CWS_AUTO_PUBLISH: ${{ vars.CWS_AUTO_PUBLISH }}
 
       - name: Validate Chrome Web Store secrets
         if: steps.cws_gate.outputs.enabled == 'true'

@@ -1,6 +1,6 @@
 {
   "name": "codex-blocker",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Automatically blocks distracting websites unless Codex is actively running. Forked from Theo Browne's (T3) Claude Blocker",
   "author": "Adam Blumoff ",
   "repository": {
@@ -31,6 +31,7 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@codex-blocker/shared": "workspace:*",
     "@types/node": "^22.10.2",
     "@types/qrcode": "^1.5.5",
     "@types/ws": "^8.5.13",

@@ -35,6 +35,17 @@ describe("blocking", () => {
     expect(shouldBlock).toBe(true);
   });
 
+  it("blocks when the server is connected but no Codex sessions are active", () => {
+    const shouldBlock = computeShouldBlock({
+      bypassActive: false,
+      serverConnected: true,
+      sessions: 0,
+      working: 0,
+      waitingForInput: 0,
+    });
+    expect(shouldBlock).toBe(true);
+  });
+
   it("blocks when Codex is waiting for user input, even if another session is working", () => {
     const shouldBlock = computeShouldBlock({
       bypassActive: false,

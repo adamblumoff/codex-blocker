@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Codex Blocker: Block distracting sites when Codex is idle",
-  "version": "0.1.3",
-  "version_name": "0.1.3",
+  "version": "0.1.4",
+  "version_name": "0.1.4",
   "description": "Automatically blocks distracting websites unless Codex is actively running.",
   "homepage_url": "https://github.com/adamblumoff/codex-blocker",
   "minimum_chrome_version": "116",

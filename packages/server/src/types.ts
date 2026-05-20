@@ -1,3 +1,16 @@
+export type {
+  ClientMessage,
+  ExtensionPairConfirmRequest,
+  ExtensionPairStartRequest,
+  ExtensionPairStartResponse,
+  MobileDiscoveryResponse,
+  MobilePairConfirmRequest,
+  MobilePairConfirmResponse,
+  MobilePairStartRequest,
+  MobilePairStartResponse,
+  ServerMessage,
+} from "@codex-blocker/shared";
+
 export interface CodexActivity {
   sessionId: string;
   cwd?: string;
@@ -13,60 +26,6 @@ export interface Session {
   waitingForInputSince?: Date;
   cwd?: string;
   idleTimeoutMs?: number;
-}
-
-// WebSocket messages from server to extension
-export type ServerMessage =
-  | {
-      type: "state";
-      blocked: boolean;
-      sessions: number;
-      working: number;
-      waitingForInput: number;
-    }
-  | { type: "pong" };
-
-// WebSocket messages from extension to server
-export type ClientMessage = { type: "ping" } | { type: "subscribe" };
-
-export interface MobileDiscoveryResponse {
-  name: string;
-  instanceId: string;
-  port: number;
-  pairingRequired: boolean;
-  pairingExpiresAt: number | null;
-}
-
-export interface ExtensionPairStartResponse {
-  expiresAt: number;
-}
-
-export interface ExtensionPairStartRequest {
-  regenerateCode?: boolean;
-}
-
-export interface ExtensionPairConfirmRequest {
-  code?: string;
-}
-
-export interface MobilePairStartResponse {
-  expiresAt: number;
-  qrExpiresAt: number;
-  qrFormat: "cbm-v1";
-}
-
-export interface MobilePairStartRequest {
-  refreshQr?: boolean;
-}
-
-export interface MobilePairConfirmRequest {
-  qrNonce?: string;
-}
-
-export interface MobilePairConfirmResponse {
-  token: string;
-  statusUrl: string;
-  wsUrl: string;
 }
 
 // Server configuration
